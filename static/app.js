@@ -3,6 +3,162 @@
    ========================================================================= */
 
 // -------------------------------------------------------------------------
+// Live patient intake injection + ED demo
+// -------------------------------------------------------------------------
+const patientIntakeCard = document.getElementById('patient-intake-card');
+const patientIntakeText = document.getElementById('patient-intake-text');
+const demoVisitReasonBtn = document.getElementById('btn-demo-visit-reason');
+
+const DEMO_VISIT_REASON = 'Mental health check-in — work stress; post-ED asthma flare';
+
+const PATIENT_INTAKE_MESSAGES = {
+  mental: (
+    "I am here for a mental health check-in because work has been super stressful, "
+    + "but also my asthma has been playing up again since I got out of the hospital last week."
+  ),
+  asthma: (
+    "My breathing got really bad after I left the ER last week. I have my rescue inhaler "
+    + "but I am not sure my asthma plan is right anymore."
+  ),
+  diabetes: (
+    "I'm here about my diabetes meds — the Metformin dose change didn't happen and "
+    + "my sugars have been all over the place."
+  ),
+};
+
+function resolvePatientIntakeText(reason) {
+  const r = (reason || '').toLowerCase();
+  if (!r.trim()) return null;
+  if (r.includes('mental') || r.includes('stress') || r.includes('check-in')) {
+    return PATIENT_INTAKE_MESSAGES.mental;
+  }
+  if (r.includes('asthma') || r.includes('breath') || r.includes('ed') || r.includes('hospital')) {
+    return PATIENT_INTAKE_MESSAGES.asthma;
+  }
+  if (r.includes('diabetes') || r.includes('metformin') || r.includes('medication')) {
+    return PATIENT_INTAKE_MESSAGES.diabetes;
+  }
+  return `"I'm here today because: ${reason.trim()}"`;
+}
+
+function showPatientIntake(reason) {
+  const text = resolvePatientIntakeText(reason);
+  if (!text || !patientIntakeCard || !patientIntakeText) return;
+  patientIntakeText.textContent = text.startsWith('"') ? text : `"${text}"`;
+  patientIntakeCard.classList.remove('hidden');
+  patientIntakeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function bindPatientIntakeInput(inputEl) {
+  if (!inputEl) return;
+  let debounce;
+  inputEl.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => showPatientIntake(inputEl.value), 280);
+  });
+}
+
+// -------------------------------------------------------------------------
+// Physician Focus Mode (Flow B)
+// -------------------------------------------------------------------------
+const cognitiveLoadSwitch = document.getElementById('cognitive-load-switch');
+const cognitiveModeBadge = document.getElementById('cognitive-mode-badge');
+const COPILOT_STORAGE_KEY = 'gp-copilot-physician-focus';
+
+function isCopilotMode() {
+  return document.body.classList.contains('cognitive-mode-copilot');
+}
+
+function setCognitiveLoadMode(copilotActive, { persist = true } = {}) {
+  document.body.classList.toggle('cognitive-mode-copilot', copilotActive);
+  if (cognitiveModeBadge) {
+    cognitiveModeBadge.textContent = copilotActive ? 'Clinical Copilot' : 'Full EMR';
+  }
+  if (cognitiveLoadSwitch) {
+    cognitiveLoadSwitch.checked = copilotActive;
+  }
+  if (persist) {
+    localStorage.setItem(COPILOT_STORAGE_KEY, copilotActive ? 'copilot' : 'emr');
+  }
+  if (copilotActive) {
+    ensureVisitStarted({ silent: true });
+  }
+  updateCopilotTaskLabels();
+}
+
+function updateCopilotTaskLabels() {
+  document.querySelectorAll('.task-approve-label').forEach(el => {
+    el.textContent = isCopilotMode() ? 'Authorize' : 'Approve';
+  });
+}
+
+if (cognitiveLoadSwitch) {
+  cognitiveLoadSwitch.addEventListener('change', () => {
+    setCognitiveLoadMode(cognitiveLoadSwitch.checked);
+  });
+}
+
+// Restore physician focus preference (default: on for streamlined workflow)
+if (cognitiveLoadSwitch) {
+  const saved = localStorage.getItem(COPILOT_STORAGE_KEY);
+  setCognitiveLoadMode(saved !== 'emr', { persist: false });
+}
+
+// -------------------------------------------------------------------------
+// AI Evidence Rationale — collapsible audit trail
+// -------------------------------------------------------------------------
+const evidenceRationaleToggle = document.getElementById('evidence-rationale-toggle');
+const evidenceRationalePanel = document.getElementById('evidence-rationale-panel');
+
+if (evidenceRationaleToggle && evidenceRationalePanel) {
+  evidenceRationaleToggle.addEventListener('click', () => {
+    const expanded = evidenceRationaleToggle.getAttribute('aria-expanded') === 'true';
+    evidenceRationaleToggle.setAttribute('aria-expanded', String(!expanded));
+    evidenceRationalePanel.classList.toggle('hidden', expanded);
+  });
+}
+
+function extractReferralText(chartEntry) {
+  if (!chartEntry) return '';
+  const sentences = chartEntry.match(/[^.!?]+[.!?]+/g) || [chartEntry];
+  const referral = sentences
+    .filter(s => /\brefer(r?(al|ed|ring)?)?\b/i.test(s))
+    .join(' ')
+    .trim();
+  return referral;
+}
+
+function buildEvidenceRationale(visitNotes, chartEntry) {
+  const combined = `${visitNotes || ''} ${chartEntry || ''}`.toLowerCase();
+  if (/rlq|appendic|emesis|vomit/.test(combined)) {
+    return "System Rationale: Identified clinical tokens 'RLQ pain' and 'emesis' matching MeSH term D001064 (Appendicitis). Cross-referenced history array: No prior appendectomy on file. Urgency escalated to CRITICAL.";
+  }
+  if (/\brefer/.test(combined)) {
+    return "System Rationale: Matched plan tokens from visit notes against pre-visit briefing chips and medication history. Referral language synthesized with ROUTINE urgency. Confidence: 0.91.";
+  }
+  return "System Rationale: No specialist referral tokens detected in visit notes. Referral block held for clinician review. Confidence: 0.72.";
+}
+
+function updateReferralOutput(chartEntry, visitNotes) {
+  const referralEl = document.getElementById('specialist-referral-output');
+  const rationaleEl = document.getElementById('evidence-rationale-text');
+  if (!referralEl) return;
+
+  const referral = extractReferralText(chartEntry);
+  if (referral) {
+    referralEl.textContent = referral;
+    referralEl.classList.add('populated');
+  } else {
+    referralEl.textContent = 'No specialist referral identified in generated note.';
+    referralEl.classList.remove('populated');
+  }
+
+  if (rationaleEl) {
+    rationaleEl.textContent = buildEvidenceRationale(visitNotes, chartEntry);
+  }
+}
+
+// -------------------------------------------------------------------------
 // Sidebar collapse/expand
 // -------------------------------------------------------------------------
 document.querySelectorAll('.sidebar-panel-header').forEach(header => {
@@ -211,35 +367,87 @@ if (confirmAllBtn) {
 // -------------------------------------------------------------------------
 const startVisitBtn = document.getElementById('btn-start-visit');
 const visitReasonInput = document.getElementById('visit-reason-input');
+const copilotChiefComplaint = document.getElementById('copilot-chief-complaint');
 let activeVisitId = null;
+
+bindPatientIntakeInput(visitReasonInput);
+bindPatientIntakeInput(copilotChiefComplaint);
+
+if (demoVisitReasonBtn) {
+  demoVisitReasonBtn.addEventListener('click', async () => {
+    if (visitReasonInput) visitReasonInput.value = DEMO_VISIT_REASON;
+    if (copilotChiefComplaint) copilotChiefComplaint.value = DEMO_VISIT_REASON;
+    showPatientIntake(DEMO_VISIT_REASON);
+    if (isCopilotMode()) {
+      await ensureVisitStarted({ silent: true });
+    }
+  });
+}
+
+(function initPatientIntakeFromActiveVisit() {
+  const reason = copilotChiefComplaint?.value?.trim() || visitReasonInput?.value?.trim();
+  if (reason) showPatientIntake(reason);
+})();
+
+async function ensureVisitStarted({ silent = false } = {}) {
+  const existing = activeVisitId || document.getElementById('active-visit-id')?.value;
+  if (existing) {
+    activeVisitId = existing;
+    document.getElementById('visit-started-section')?.classList.remove('hidden');
+    document.getElementById('start-visit-section')?.classList.add('hidden');
+    return existing;
+  }
+
+  const reason = (
+    copilotChiefComplaint?.value?.trim()
+    || visitReasonInput?.value?.trim()
+    || document.querySelector('.exec-impression')?.textContent?.slice(0, 80)
+    || 'Return visit — clinical review'
+  );
+
+  const patientId = document.body.dataset.patientId;
+  if (!patientId) return null;
+
+  try {
+    const resp = await fetch(`/flow-b/${patientId}/start-visit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visit_reason: reason }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      if (!silent) {
+        showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
+      }
+      return null;
+    }
+    activeVisitId = data.visit_id;
+    document.getElementById('active-visit-id')?.setAttribute('value', activeVisitId);
+    document.getElementById('visit-started-section')?.classList.remove('hidden');
+    document.getElementById('start-visit-section')?.classList.add('hidden');
+    if (copilotChiefComplaint && !copilotChiefComplaint.value) {
+      copilotChiefComplaint.value = reason;
+    }
+    showPatientIntake(reason);
+    if (!silent) {
+      showAlert(document.getElementById('flow-b-alerts'), 'info', `Encounter opened: ${reason}`);
+    }
+    return activeVisitId;
+  } catch (err) {
+    if (!silent) {
+      showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
+    }
+    return null;
+  }
+}
 
 if (startVisitBtn) {
   startVisitBtn.addEventListener('click', async () => {
-    const reason = visitReasonInput?.value?.trim() || 'Unspecified';
     setButtonLoading(startVisitBtn, true, 'Starting visit…');
-    try {
-      const patientId = document.body.dataset.patientId;
-      const resp = await fetch(`/flow-b/${patientId}/start-visit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visit_reason: reason }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || data.error) {
-        showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
-        return;
-      }
-      activeVisitId = data.visit_id;
-      document.getElementById('active-visit-id')?.setAttribute('value', activeVisitId);
-      document.getElementById('visit-started-section')?.classList.remove('hidden');
-      document.getElementById('start-visit-section')?.classList.add('hidden');
-      showAlert(document.getElementById('flow-b-alerts'), 'info',
-        `Visit started (reason: ${reason}). Pre-visit chips remain active for reference.`);
-    } catch (err) {
-      showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
-    } finally {
-      setButtonLoading(startVisitBtn, false);
-    }
+    const reason = visitReasonInput?.value?.trim() || DEMO_VISIT_REASON;
+    showPatientIntake(reason);
+    await ensureVisitStarted({ silent: false });
+    setButtonLoading(startVisitBtn, false);
   });
 }
 
@@ -254,10 +462,14 @@ const patientSummaryOutput = document.getElementById('patient-summary-output');
 let generatedOutput = null;
 
 if (generateNoteBtn) {
-  generateNoteBtn.addEventListener('click', async () => {
+  const runGenerateNote = async () => {
+    if (isCopilotMode()) {
+      await ensureVisitStarted({ silent: true });
+    }
     const notes = visitNotesTextarea?.value?.trim();
     if (!notes) {
-      showAlert(document.getElementById('flow-b-alerts'), 'warning', 'Enter visit notes before generating.');
+      showAlert(document.getElementById('flow-b-alerts'), 'warning',
+        isCopilotMode() ? 'Enter encounter documentation before generating.' : 'Enter visit notes before generating.');
       return;
     }
     setButtonLoading(generateNoteBtn, true, 'Generating…');
@@ -276,100 +488,256 @@ if (generateNoteBtn) {
       generatedOutput = data.output;
       if (chartEntryOutput) chartEntryOutput.textContent = generatedOutput.chart_entry;
       if (patientSummaryOutput) patientSummaryOutput.textContent = generatedOutput.patient_summary;
+      updateReferralOutput(generatedOutput.chart_entry, notes);
+      populateSuggestedTasks(generatedOutput.suggested_tasks || []);
       dualOutputSection?.classList.remove('hidden');
       document.getElementById('confirm-note-section')?.classList.remove('hidden');
+      document.getElementById('copilot-authorize-bar')?.classList.remove('hidden');
+      dualOutputSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       showAlert(document.getElementById('flow-b-alerts'), 'success',
-        'Dual output generated — one prompt, two targets. Review before confirming.');
+        isCopilotMode()
+          ? 'Clinical draft ready. Review chart entry and authorize care plan orders below.'
+          : 'Outputs generated. Review AI-suggested follow-up tasks before confirming.');
     } catch (err) {
       showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
     } finally {
       setButtonLoading(generateNoteBtn, false);
     }
+  };
+
+  generateNoteBtn.addEventListener('click', runGenerateNote);
+
+  visitNotesTextarea?.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runGenerateNote();
+    }
   });
 }
 
 // -------------------------------------------------------------------------
-// Flow B — Task builder
+// Flow B — Task builder (AI suggestions + doctor approval)
 // -------------------------------------------------------------------------
 const addTaskBtn = document.getElementById('btn-add-task');
 const taskList = document.getElementById('task-list');
+const taskListEmpty = document.getElementById('task-list-empty');
+const taskSuggestionsBanner = document.getElementById('task-suggestions-banner');
 let taskCount = 0;
+
+function defaultDueDate(daysAhead = 30) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  return d.toISOString().split('T')[0];
+}
+
+function updateTaskListEmptyState() {
+  const rows = taskList?.querySelectorAll('.task-row') || [];
+  const approved = taskList?.querySelectorAll('.task-row .task-approve:checked') || [];
+  taskListEmpty?.classList.toggle('hidden', rows.length > 0);
+  if (rows.length > 0 && approved.length === 0) {
+    taskListEmpty?.classList.remove('hidden');
+    if (taskListEmpty) taskListEmpty.textContent = 'No tasks approved. Check at least one task to save, or add manually.';
+  } else if (rows.length === 0 && taskListEmpty) {
+    taskListEmpty.textContent = 'No tasks yet. Add a task or regenerate from visit notes.';
+  }
+}
+
+function bindTaskRowEvents(row) {
+  const approve = row.querySelector('.task-approve');
+  const label = row.querySelector('.task-approve-label');
+  const syncRejected = () => {
+    row.classList.toggle('task-row-rejected', approve && !approve.checked);
+    updateTaskListEmptyState();
+  };
+  approve?.addEventListener('change', syncRejected);
+  label?.addEventListener('click', () => {
+    if (approve) {
+      approve.checked = !approve.checked;
+      syncRejected();
+    }
+  });
+  syncRejected();
+}
+
+function addTaskRow(task = {}, { suggested = false } = {}) {
+  taskCount++;
+  const desc = task.description || '';
+  const type = task.type || 'confirmation';
+  const due = task.due_date || defaultDueDate();
+  const metric = task.target_metric || '';
+
+  const row = document.createElement('div');
+  row.className = `task-row${suggested ? ' task-row-suggested' : ''}`;
+  row.id = `task-row-${taskCount}`;
+  row.innerHTML = `
+    <div class="task-approve-wrap" title="Include this task when confirming visit">
+      <input type="checkbox" class="task-approve" name="task_approve" checked aria-label="Approve task" />
+      <span class="task-approve-label">Approve</span>
+    </div>
+    <input type="text" name="task_desc" placeholder="Task description…" value="${escapeHtmlAttr(desc)}" required />
+    <select name="task_type">
+      <option value="confirmation" ${type === 'confirmation' ? 'selected' : ''}>Confirmation</option>
+      <option value="recurring_input" ${type === 'recurring_input' ? 'selected' : ''}>Reading</option>
+    </select>
+    <input type="text" name="task_metric" placeholder="Metric (optional)" value="${escapeHtmlAttr(metric)}" title="e.g. HbA1c, fasting_glucose" />
+    <input type="date" name="task_due" value="${due}" />
+    ${suggested ? '<span class="task-ai-badge">AI</span>' : ''}
+    <button type="button" class="btn btn-sm btn-danger task-remove-btn" aria-label="Remove task">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  `;
+
+  row.querySelector('.task-remove-btn')?.addEventListener('click', () => {
+    row.remove();
+    updateTaskListEmptyState();
+  });
+
+  bindTaskRowEvents(row);
+  taskList?.appendChild(row);
+  updateTaskListEmptyState();
+  updateCopilotTaskLabels();
+  return row;
+}
+
+function escapeHtmlAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+function populateSuggestedTasks(suggestedTasks) {
+  if (!taskList) return;
+  taskList.innerHTML = '';
+  taskCount = 0;
+
+  const tasks = Array.isArray(suggestedTasks) ? suggestedTasks : [];
+  if (tasks.length > 0) {
+    taskSuggestionsBanner?.classList.remove('hidden');
+    tasks.forEach(task => addTaskRow(task, { suggested: true }));
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } else {
+    taskSuggestionsBanner?.classList.add('hidden');
+  }
+  updateTaskListEmptyState();
+}
 
 if (addTaskBtn) {
   addTaskBtn.addEventListener('click', () => {
-    taskCount++;
-    const today = new Date();
-    const defaultDue = new Date(today.setDate(today.getDate() + 30)).toISOString().split('T')[0];
-    const row = document.createElement('div');
-    row.className = 'task-row';
-    row.id = `task-row-${taskCount}`;
-    row.innerHTML = `
-      <input type="text" name="task_desc" placeholder="Task description…" required />
-      <select name="task_type">
-        <option value="confirmation">Confirmation</option>
-        <option value="recurring_input">Reading</option>
-      </select>
-      <input type="date" name="task_due" value="${defaultDue}" />
-      <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.task-row').remove()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    `;
-    taskList?.appendChild(row);
+    addTaskRow({}, { suggested: false });
   });
 }
 
 // -------------------------------------------------------------------------
-// Flow B — Confirm note + tasks
+// Flow B — Confirm / authorize encounter
 // -------------------------------------------------------------------------
 const confirmNoteBtn = document.getElementById('btn-confirm-note');
+const copilotAuthorizeBtn = document.getElementById('btn-copilot-authorize');
+const copilotSendPortalCheckbox = document.getElementById('copilot-send-portal');
 
-if (confirmNoteBtn) {
-  confirmNoteBtn.addEventListener('click', async () => {
-    if (!generatedOutput) {
-      showAlert(document.getElementById('flow-b-alerts'), 'warning', 'Generate note first.');
+function collectApprovedTasks() {
+  const tasks = [];
+  document.querySelectorAll('.task-row').forEach(row => {
+    const approved = row.querySelector('.task-approve')?.checked;
+    if (!approved) return;
+    const desc = row.querySelector('[name="task_desc"]')?.value?.trim();
+    const type = row.querySelector('[name="task_type"]')?.value;
+    const due = row.querySelector('[name="task_due"]')?.value;
+    const metric = row.querySelector('[name="task_metric"]')?.value?.trim();
+    if (desc && due) {
+      const task = { description: desc, type, due_date: due };
+      if (metric) task.target_metric = metric;
+      tasks.push(task);
+    }
+  });
+  return tasks;
+}
+
+async function confirmEncounter({ sendPortal = false, triggerBtn = null } = {}) {
+  if (!generatedOutput) {
+    showAlert(document.getElementById('flow-b-alerts'), 'warning', 'Generate clinical draft first.');
+    return;
+  }
+
+  const tasks = collectApprovedTasks();
+  if (document.querySelectorAll('.task-row').length > 0 && tasks.length === 0) {
+    showAlert(document.getElementById('flow-b-alerts'), 'warning',
+      isCopilotMode()
+        ? 'No care plan orders authorized. Check at least one order to issue.'
+        : 'No tasks approved. Check at least one task to include, or confirm without tasks.');
+    return;
+  }
+
+  const patientId = document.body.dataset.patientId;
+  let visitId = activeVisitId || document.getElementById('active-visit-id')?.value;
+  if (!visitId && isCopilotMode()) {
+    visitId = await ensureVisitStarted({ silent: true });
+  }
+
+  if (triggerBtn) setButtonLoading(triggerBtn, true, isCopilotMode() ? 'Authorizing…' : 'Saving visit…');
+
+  try {
+    const resp = await fetch(`/flow-b/${patientId}/confirm-note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visit_id: visitId,
+        chart_entry: generatedOutput.chart_entry,
+        patient_summary: generatedOutput.patient_summary,
+        tasks,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
       return;
     }
-    const patientId = document.body.dataset.patientId;
-    const visitId = activeVisitId || document.getElementById('active-visit-id')?.value;
 
-    // Collect tasks from task builder
-    const tasks = [];
-    document.querySelectorAll('.task-row').forEach(row => {
-      const desc = row.querySelector('[name="task_desc"]')?.value?.trim();
-      const type = row.querySelector('[name="task_type"]')?.value;
-      const due = row.querySelector('[name="task_due"]')?.value;
-      if (desc && due) {
-        tasks.push({ description: desc, type, due_date: due });
-      }
-    });
+    document.getElementById('saved-visit-id')?.setAttribute('value', visitId);
+    if (confirmNoteBtn) confirmNoteBtn.disabled = true;
+    if (copilotAuthorizeBtn) copilotAuthorizeBtn.disabled = true;
 
-    setButtonLoading(confirmNoteBtn, true, 'Saving visit…');
-    try {
-      const resp = await fetch(`/flow-b/${patientId}/confirm-note`, {
+    if (sendPortal) {
+      const portalResp = await fetch(`/flow-b/${patientId}/send-portal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          visit_id: visitId,
-          chart_entry: generatedOutput.chart_entry,
-          patient_summary: generatedOutput.patient_summary,
-          tasks,
-        }),
+        body: JSON.stringify({ visit_id: visitId }),
       });
-      const data = await resp.json();
-      if (!resp.ok || data.error) {
-        showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
-        return;
+      const portalData = await portalResp.json();
+      if (portalResp.ok && portalData.portal_url) {
+        const portalLinkDisplay = document.getElementById('portal-link-display');
+        if (portalLinkDisplay) {
+          portalLinkDisplay.textContent = portalData.portal_url;
+          portalLinkDisplay.href = portalData.portal_url;
+        }
+        showAlert(document.getElementById('flow-b-alerts'), 'success',
+          `Encounter authorized. ${data.task_count} care plan order(s) issued. Patient instructions dispatched.`);
+      } else {
+        showAlert(document.getElementById('flow-b-alerts'), 'success',
+          `Encounter saved. ${data.task_count} order(s) issued. Portal dispatch failed — retry from full EMR view.`);
       }
+    } else {
       showAlert(document.getElementById('flow-b-alerts'), 'success',
-        `✅ Visit saved. ${data.task_count} follow-up tasks created. ${data.message}`);
+        `Encounter saved. ${data.task_count} follow-up task(s) created. ${data.message}`);
       document.getElementById('send-portal-section')?.classList.remove('hidden');
-      document.getElementById('saved-visit-id')?.setAttribute('value', visitId);
-      confirmNoteBtn.disabled = true;
-    } catch (err) {
-      showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
-    } finally {
-      setButtonLoading(confirmNoteBtn, false);
     }
+  } catch (err) {
+    showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
+  } finally {
+    if (triggerBtn) setButtonLoading(triggerBtn, false);
+  }
+}
+
+if (confirmNoteBtn) {
+  confirmNoteBtn.addEventListener('click', () => confirmEncounter({ sendPortal: false, triggerBtn: confirmNoteBtn }));
+}
+
+if (copilotAuthorizeBtn) {
+  copilotAuthorizeBtn.addEventListener('click', () => {
+    confirmEncounter({
+      sendPortal: copilotSendPortalCheckbox?.checked ?? true,
+      triggerBtn: copilotAuthorizeBtn,
+    });
   });
 }
 

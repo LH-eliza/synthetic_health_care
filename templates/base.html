@@ -43,6 +43,8 @@
       {% endif %}
     </div>
 
+    {% block topbar_extra %}{% endblock %}
+
     <div class="topbar-actions">
       <a href="/settings/date" class="date-pill">
         <i data-lucide="calendar" style="width:12px;height:12px;stroke:currentColor;stroke-width:1.5"></i>
@@ -141,10 +143,15 @@
   <aside class="sidebar-right">
     {% block sidebar_right %}
     {% if patient and patient.snapshot_data %}
+      <div class="sidebar-anchor-callout standard-only">
+        <i data-lucide="pin"></i>
+        <span>Allergies &amp; medications locked to margin — always visible, native EMR layout</span>
+      </div>
       {% set snap = patient.snapshot_data %}
 
-      <div class="sidebar-panel open">
+      <div class="sidebar-panel open sidebar-anchor-panel sidebar-anchor-allergies" id="sidebar-allergies-panel">
         <div class="sidebar-panel-header active">
+          <span class="sidebar-anchor-pin">Pinned</span>
           Allergies <span class="sidebar-panel-chevron">›</span>
         </div>
         <div class="sidebar-panel-body">
@@ -158,8 +165,9 @@
       </div>
 
       {% if snap.get('medications') %}
-      <div class="sidebar-panel open">
+      <div class="sidebar-panel open sidebar-anchor-panel sidebar-anchor-medications" id="sidebar-medications-panel">
         <div class="sidebar-panel-header active">
+          <span class="sidebar-anchor-pin">Pinned</span>
           Medications <span class="sidebar-panel-chevron">›</span>
         </div>
         <div class="sidebar-panel-body">

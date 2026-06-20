@@ -42,6 +42,7 @@ CORS(app)
 # Initialize DB on startup
 db.init_db()
 db.seed()
+db.patch_marcus_demo_data()
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +172,12 @@ def flow_b(patient_id: int):
         responses = db.get_responses_for_patient_tasks(patient_id)
         chips = rules_engine.build_previsit_chips(patient, prior_tasks, responses, today)
 
+    executive_brief = rules_engine.build_executive_brief(
+        patient, chips, latest_visit, today
+    ) if chips else None
+
+    ed_continuity_alert = rules_engine.get_ed_continuity_alert(patient, today)
+
     snap = db.get_latest_snapshot(patient_id)
 
     # Check if there's already a new visit started in session
@@ -189,6 +196,8 @@ def flow_b(patient_id: int):
         latest_visit=latest_visit,
         prior_tasks=prior_tasks,
         chips=chips,
+        executive_brief=executive_brief,
+        ed_continuity_alert=ed_continuity_alert,
         snapshot=snap,
         active_visit=active_visit,
     )
@@ -218,12 +227,20 @@ def flow_b_generate_note(patient_id: int):
     if not visit_notes:
         return jsonify({"error": "No visit notes provided"}), 400
 
+    visit_id = session.get(f"active_visit_{patient_id}")
+    visit_reason = ""
+    if visit_id:
+        visit = db.get_visit(visit_id)
+        if visit:
+            visit_reason = visit.get("visit_reason") or ""
+
     try:
         result = generate_dual_output_note(
             visit_notes_text=visit_notes,
             patient_context={
                 "name": patient["name"].split()[0],  # first name for patient summary
                 "condition": patient.get("condition") or "chronic condition",
+                "visit_reason": visit_reason,
             },
         )
         return jsonify({"success": True, "output": result})

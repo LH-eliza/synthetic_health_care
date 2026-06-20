@@ -2,6 +2,17 @@
 
 {% block title %}{{ patient.name }} — GP Copilot{% endblock %}
 
+{% block topbar_extra %}
+<div class="cognitive-load-toggle" id="cognitive-load-toggle-wrap">
+  <span class="cognitive-load-label">Physician Focus Mode</span>
+  <label class="toggle-switch" for="cognitive-load-switch" title="Streamlined clinical workflow vs full EMR">
+    <input type="checkbox" id="cognitive-load-switch" aria-label="Physician Focus Mode">
+    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+  </label>
+  <span class="cognitive-mode-badge" id="cognitive-mode-badge">Full EMR</span>
+</div>
+{% endblock %}
+
 {% block sidebar_reminders %}
 {% if prior_tasks %}
 <div class="sidebar-panel open">
@@ -47,9 +58,39 @@
 <div id="flow-b-alerts"></div>
 <input type="hidden" id="active-visit-id" value="{{ active_visit.id if active_visit else '' }}">
 <input type="hidden" id="saved-visit-id" value="">
+<input type="hidden" id="patient-id-context" value="{{ patient.id }}">
+
+<!-- ⚠️ ED Continuity Alert — high visibility continuity gap -->
+{% if ed_continuity_alert %}
+<div class="ed-continuity-alert ed-severity-{{ ed_continuity_alert.severity }}" id="ed-continuity-alert">
+  <div class="ed-continuity-icon">
+    <i data-lucide="alert-octagon"></i>
+  </div>
+  <div class="ed-continuity-body">
+    <div class="ed-continuity-title">⚠️ {{ ed_continuity_alert.title }}</div>
+    <p class="ed-continuity-message">{{ ed_continuity_alert.message }}</p>
+    <div class="ed-continuity-meta">
+      <span><strong>Source:</strong> {{ ed_continuity_alert.facility }}</span>
+      <span><strong>Discharge:</strong> {{ ed_continuity_alert.discharge_date }}</span>
+      <span><strong>Diagnosis:</strong> {{ ed_continuity_alert.diagnosis }}</span>
+      <span class="chip-status-pill status-overdue">No follow-up booked</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Live patient kiosk check-in (injected when visit reason entered) -->
+<div id="patient-intake-card" class="patient-intake-card hidden">
+  <div class="patient-intake-header">
+    <i data-lucide="message-circle"></i>
+    <span>Reason for Visit — Patient Self-Report (Kiosk Check-In)</span>
+    <span class="patient-intake-live">Live</span>
+  </div>
+  <blockquote id="patient-intake-text" class="patient-intake-quote"></blockquote>
+</div>
 
 <!-- Header -->
-<div class="section-header">
+<div class="section-header cognitive-clutter">
   <div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
       <span class="badge badge-flow-b">
@@ -62,11 +103,58 @@
 </div>
 
 <!-- ================================================================
-     PRE-VISIT BRIEFING — three chips, fires every visit
+     EXECUTIVE CLINICAL BRIEF — physician focus mode (replaces chips)
+     ================================================================ -->
+{% if executive_brief %}
+<div id="copilot-executive-brief" class="copilot-only">
+  <div class="exec-brief-card">
+    <div class="exec-brief-header">
+      <div>
+        <div class="exec-brief-eyebrow">Executive Clinical Brief</div>
+        <h2 class="exec-brief-title">{{ executive_brief.patient_label }}</h2>
+        <div class="exec-brief-meta">
+          <span>{{ patient.age }}y {{ patient.sex }}</span>
+          <span class="badge badge-condition">{{ executive_brief.condition|title }}</span>
+          {% if latest_visit %}<span>Last encounter: {{ latest_visit.visit_date }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="exec-section">
+      <div class="exec-section-label">Clinical Impression</div>
+      <p class="exec-impression">{{ executive_brief.impression }}</p>
+    </div>
+
+    <div class="exec-section">
+      <div class="exec-section-label">Priority Actions</div>
+      <ul class="exec-priority-list">
+        {% for action in executive_brief.priority_actions %}
+        <li>{{ action }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <details class="exec-breakdown">
+      <summary>Supporting clinical data — expand for full breakdown</summary>
+      <div class="exec-breakdown-body">
+        {% for item in executive_brief.breakdown %}
+        <div class="exec-breakdown-item">
+          <span class="chip-status-pill status-{{ item.status }}">{{ item.category }}</span>
+          <span class="exec-breakdown-detail">{{ item.detail }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+</div>
+{% endif %}
+
+<!-- ================================================================
+     PRE-VISIT BRIEFING — three chips (full EMR mode)
      ================================================================ -->
 {% if chips %}
-<div class="section-label">Pre-Visit Briefing</div>
-<div class="chips-container">
+<div class="section-label standard-only">Pre-Visit Briefing</div>
+<div class="chips-container standard-only">
 
   <!-- Chip 1: Condition monitoring (gold) -->
   <div class="previsit-chip chip-condition">
@@ -142,7 +230,7 @@
 {% endif %}
 
 {% if latest_visit %}
-<div class="alert alert-info" style="font-size:12px;margin-bottom:24px">
+<div class="alert alert-info cognitive-clutter" style="font-size:12px;margin-bottom:24px">
   <i data-lucide="calendar"></i>
   <div>
     <strong>Prior visit:</strong> {{ latest_visit.visit_date }} — {{ latest_visit.visit_reason or 'No reason recorded' }}.
@@ -155,8 +243,8 @@
      VISIT CAPTURE
      ================================================================ -->
 
-<!-- Step 1: Start visit -->
-<div id="start-visit-section" {% if active_visit %}class="hidden"{% endif %}>
+<!-- Step 1: Start visit (full EMR only — auto-started in physician focus mode) -->
+<div id="start-visit-section" class="copilot-hide {% if active_visit %}hidden{% endif %}">
   <div class="encounter-card">
     <div class="encounter-card-header">
       <div class="encounter-card-title">
@@ -165,8 +253,13 @@
       </div>
     </div>
     <p class="text-secondary" style="font-size:12px;margin-bottom:14px">
-      Enter the visit reason. The pre-visit briefing above fires regardless.
+      Enter the visit reason or load the demo check-in. Patient self-report will appear above automatically.
     </p>
+    <div class="d-flex gap-8" style="flex-wrap:wrap;margin-bottom:10px">
+      <button type="button" id="btn-demo-visit-reason" class="btn btn-secondary btn-sm">
+        <i data-lucide="play"></i> Demo: Marcus mental health + asthma check-in
+      </button>
+    </div>
     <div class="d-flex gap-8">
       <input
         id="visit-reason-input"
@@ -181,49 +274,70 @@
   </div>
 </div>
 
-<!-- Step 2: Notes + generate (visible once visit is started) -->
+<!-- Step 2: Encounter documentation -->
 <div id="visit-started-section" {% if not active_visit %}class="hidden"{% endif %}>
-  <div class="encounter-card">
+  <div class="encounter-card" id="encounter-doc-card">
     <div class="encounter-card-header">
       <div class="encounter-card-title">
         <i data-lucide="file-edit"></i>
-        Visit Notes
+        <span class="standard-only">Visit Notes</span>
+        <span class="copilot-only-inline">Encounter Documentation</span>
       </div>
-      <span class="badge badge-condition">Visit active</span>
+      <span class="badge badge-condition standard-only">Visit active</span>
+      <span class="badge badge-flow-b copilot-only-inline">Encounter in progress</span>
     </div>
-    <p class="text-secondary" style="font-size:12px;margin-bottom:14px">
+    <p class="text-secondary standard-only" style="font-size:12px;margin-bottom:14px">
       Enter notes in your own words. One AI call generates both the chart entry and the patient-facing summary.
     </p>
+    <p class="text-secondary copilot-only-block" style="font-size:12px;margin-bottom:14px">
+      Dictate or type clinical findings. One action generates the chart draft, care plan orders, and referral language.
+    </p>
+    <input
+      id="copilot-chief-complaint"
+      class="visit-reason-input copilot-only-block"
+      type="text"
+      style="margin-bottom:12px"
+      placeholder="Chief complaint — e.g. medication reconciliation, disease monitoring, symptom review"
+      value="{{ active_visit.visit_reason if active_visit else '' }}"
+    >
     <textarea
       id="visit-notes-textarea"
       class="scribe-textarea"
       style="min-height:160px"
-      placeholder="Visit notes…
+      placeholder="Subjective / Objective / Assessment / Plan…
 
-Example: Patient presents for mental health follow-up — low mood, poor sleep. Discussed T2DM management. HbA1c 7.8%, improved from 8.2% — good trend. Metformin increase not completed (GI side effects). Plan: switch to extended-release Metformin 500mg ER, titrate. Refer to diabetes educator. Repeat HbA1c in 3 months. Patient to log daily fasting glucose and submit via secure link."
+Example: Patient presents for interval follow-up of T2DM. Reports low mood, poor sleep. HbA1c 7.8% (improved from 8.2%). Metformin dose escalation deferred — GI intolerance. Plan: initiate Metformin 500mg ER, titrate weekly. Refer to diabetes educator. Repeat HbA1c in 3 months. Order daily fasting glucose self-monitoring via secure portal."
     ></textarea>
 
     <div class="d-flex gap-8 mt-12">
-      <button id="btn-generate-note" class="btn btn-primary">
-        <i data-lucide="zap"></i> Generate Chart &amp; Patient Summary
+      <button id="btn-generate-note" class="btn btn-primary btn-lg" style="flex:1">
+        <i data-lucide="zap"></i>
+        <span class="standard-only">Generate Chart &amp; Patient Summary</span>
+        <span class="copilot-only-inline">Generate Clinical Draft &amp; Care Plan</span>
       </button>
-      <span class="text-muted" style="font-size:11px;align-self:center">
+      <span class="text-muted standard-only" style="font-size:11px;align-self:center">
         One call · two outputs · no drift
+      </span>
+      <span class="text-muted copilot-only-inline" style="font-size:11px;align-self:center">
+        Ctrl+Enter
       </span>
     </div>
   </div>
 
-  <!-- Dual output -->
+  <!-- Clinical outputs -->
   <div id="dual-output-section" class="hidden mt-16">
-    <div class="section-label">Generated Outputs — Review Before Confirming</div>
+    <div class="section-label standard-only cognitive-clutter">Generated Outputs — Review Before Confirming</div>
+    <div class="section-label copilot-only-block">Clinical Draft — Physician Review</div>
     <div class="dual-output-grid">
-      <div class="output-pane output-pane-chart">
+      <div class="output-pane output-pane-chart copilot-full-width">
         <div class="output-pane-header">
-          <i data-lucide="file-text"></i> Chart Entry — Clinical Language
+          <i data-lucide="file-text"></i>
+          <span class="standard-only">Chart Entry — Clinical Language</span>
+          <span class="copilot-only-inline">Permanent Record — SOAP / Chart Entry</span>
         </div>
         <div class="output-pane-body" id="chart-entry-output"></div>
       </div>
-      <div class="output-pane output-pane-patient">
+      <div class="output-pane output-pane-patient copilot-hide">
         <div class="output-pane-header">
           <i data-lucide="message-square"></i> Patient Summary — Plain Language
         </div>
@@ -231,35 +345,91 @@ Example: Patient presents for mental health follow-up — low mood, poor sleep. 
       </div>
     </div>
 
-    <!-- Follow-up task builder -->
+    <!-- Specialist Referral -->
+    <details class="copilot-referral-collapse mt-16" id="referral-details">
+      <summary class="output-pane-header" style="cursor:pointer;border-radius:8px 8px 0 0">
+        <i data-lucide="stethoscope"></i>
+        <span class="standard-only">Specialist Referral — Auto-Generated</span>
+        <span class="copilot-only-inline">Consultation Request — Draft Language</span>
+      </summary>
+      <div class="output-pane output-pane-referral" id="specialist-referral-section" style="border-top:none;border-radius:0 0 8px 8px">
+        <div class="output-pane-body output-pane-referral-body" id="specialist-referral-output">
+          Referral text will appear here after note generation.
+        </div>
+        <div class="ai-evidence-rationale">
+          <button
+            type="button"
+            class="evidence-rationale-toggle"
+            id="evidence-rationale-toggle"
+            aria-expanded="false"
+            aria-controls="evidence-rationale-panel"
+          >
+            View AI Evidence Rationale
+          </button>
+          <div class="evidence-rationale-panel hidden" id="evidence-rationale-panel" role="region" aria-label="AI evidence rationale">
+            <div class="evidence-rationale-label">Citation Log</div>
+            <p class="evidence-rationale-text" id="evidence-rationale-text">
+              System Rationale: Identified clinical tokens 'RLQ pain' and 'emesis' matching MeSH term D001064 (Appendicitis). Cross-referenced history array: No prior appendectomy on file. Urgency escalated to CRITICAL.
+            </p>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Care plan orders / follow-up tasks -->
     <div class="encounter-card mt-16" id="confirm-note-section">
       <div class="encounter-card-header">
         <div class="encounter-card-title">
           <i data-lucide="list-checks"></i>
-          Follow-up Tasks
+          <span class="standard-only">Follow-up Tasks</span>
+          <span class="copilot-only-inline">Care Plan Orders — Physician Authorization Required</span>
         </div>
         <button id="btn-add-task" class="btn btn-secondary btn-sm">
-          <i data-lucide="plus"></i> Add Task
+          <i data-lucide="plus"></i> Add Order
         </button>
       </div>
-      <p class="text-secondary" style="font-size:12px;margin-bottom:12px">
-        These become the prior-visit data for this patient's next visit.
+      <p class="text-secondary standard-only" style="font-size:12px;margin-bottom:8px">
+        AI suggests tasks from today's visit. Review each one — uncheck to reject, edit fields, or add your own.
       </p>
+      <p class="text-secondary copilot-only-block" style="font-size:12px;margin-bottom:8px">
+        AI-proposed care plan orders. Authorize each order individually — unchecked items will not be issued.
+      </p>
+      <div id="task-suggestions-banner" class="task-suggestions-banner hidden">
+        <i data-lucide="sparkles"></i>
+        <span><strong>AI suggested tasks</strong> — nothing is saved until you confirm below.</span>
+      </div>
       <div id="task-list" class="task-builder"></div>
+      <div id="task-list-empty" class="task-list-empty hidden">
+        No tasks selected. Add a task or regenerate from visit notes.
+      </div>
 
-      <div class="d-flex gap-8 mt-16" style="justify-content:flex-end">
+      <div class="d-flex gap-8 mt-16 copilot-hide" style="justify-content:flex-end">
         <button id="btn-confirm-note" class="btn btn-primary btn-lg">
           <i data-lucide="check"></i> Confirm Visit &amp; Create Tasks
         </button>
       </div>
-      <p class="text-muted" style="font-size:11px;text-align:right;margin-top:6px">
-        Nothing saves until confirmed.
+      <p class="text-muted copilot-hide" style="font-size:11px;text-align:right;margin-top:6px">
+        Only checked tasks are saved. Nothing commits until you confirm.
+      </p>
+    </div>
+
+    <!-- Physician focus: single authorize action -->
+    <div id="copilot-authorize-bar" class="copilot-authorize-bar copilot-only hidden">
+      <label class="copilot-portal-opt">
+        <input type="checkbox" id="copilot-send-portal" checked>
+        Dispatch patient instructions via secure link upon authorization
+      </label>
+      <button id="btn-copilot-authorize" class="btn btn-primary btn-lg">
+        <i data-lucide="shield-check"></i> Authorize Encounter &amp; Issue Orders
+      </button>
+      <p class="text-muted" style="font-size:11px;text-align:center;margin-top:8px">
+        Final physician authorization required. No data commits until authorized.
       </p>
     </div>
   </div>
 
   <!-- Secure link -->
-  <div id="send-portal-section" class="hidden">
+  <div id="send-portal-section" class="hidden cognitive-clutter">
     <div class="ocean-panel mt-16">
       <div class="ocean-panel-header">
         <i data-lucide="send"></i>

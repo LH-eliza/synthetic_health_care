@@ -553,3 +553,167 @@ def build_previsit_chips(patient: dict, prior_tasks: list[dict], responses: list
         "lab_alerts": [r.to_dict() for r in relevant_labs],
         "screenings": screenings,
     }
+
+
+def get_ed_continuity_alert(patient: dict, today: date) -> dict | None:
+    """
+    Unresolved ED discharge with no downstream follow-up booked.
+    Deterministic demo data for continuity-of-care presentation (Marcus Rivera).
+    """
+    flags = patient.get("risk_flags_data") or {}
+    stored = flags.get("ed_continuity")
+    if stored:
+        return {
+            "severity": stored.get("severity", "critical"),
+            "title": "Unresolved Emergency Department Continuity Alert",
+            "facility": stored.get("facility", "Ottawa Hospital ED"),
+            "discharge_date": stored.get("discharge_date"),
+            "diagnosis": stored.get("diagnosis"),
+            "message": stored.get("message"),
+        }
+
+    if patient.get("name") != "Marcus Rivera":
+        return None
+
+    discharge_date = "2026-06-12"
+    diagnosis = "Acute Shortness of Breath / Asthma Exacerbation"
+    return {
+        "severity": "critical",
+        "title": "Unresolved Emergency Department Continuity Alert",
+        "facility": "Ottawa Hospital ED",
+        "discharge_date": discharge_date,
+        "diagnosis": diagnosis,
+        "message": (
+            f"Discharge Summary received from Ottawa Hospital ED ({discharge_date}) "
+            f"for '{diagnosis}'. Patient was stabilized and discharged, but no "
+            f"post-hospitalization follow-up visit or asthma titration review has been booked."
+        ),
+    }
+
+
+def get_patient_intake_message(visit_reason: str, patient: dict) -> str:
+    """Simulated patient self-report from kiosk check-in, keyed to visit reason."""
+    reason = (visit_reason or "").lower()
+    name = patient.get("name", "Patient").split()[0]
+
+    if "mental" in reason or "stress" in reason or "check-in" in reason:
+        return (
+            "I am here for a mental health check-in because work has been super stressful, "
+            "but also my asthma has been playing up again since I got out of the hospital last week."
+        )
+    if "asthma" in reason or "breath" in reason or "ed" in reason or "hospital" in reason:
+        return (
+            "My breathing got really bad after I left the ER last week. I have my rescue inhaler "
+            "but I am not sure my asthma plan is right anymore."
+        )
+    if "diabetes" in reason or "metformin" in reason or "medication" in reason:
+        return (
+            f"I'm here about my diabetes meds — the Metformin dose change didn't happen and "
+            f"my sugars have been all over the place."
+        )
+    return (
+        f"Hi, I'm {name}. I'm here today because: {visit_reason or 'follow-up as scheduled'}."
+    )
+
+
+def build_executive_brief(
+    patient: dict,
+    chips: dict,
+    latest_visit: dict | None,
+    today: date,
+) -> dict:
+    """
+    Condensed physician-facing executive brief derived from pre-visit chips.
+    Deterministic — no LLM.
+    """
+    condition = (patient.get("condition") or "chronic condition").replace("_", " ")
+    priority_actions: list[str] = []
+    breakdown: list[dict] = []
+
+    overdue = [t for t in chips.get("task_diffs", []) if t.get("status") == "overdue"]
+    pending = [t for t in chips.get("task_diffs", []) if t.get("status") in ("pending", "no_data")]
+    labs = chips.get("lab_alerts", [])
+    alert = chips.get("condition_alert")
+    ed_alert = get_ed_continuity_alert(patient, today)
+
+    if ed_alert:
+        priority_actions.insert(0, (
+            f"Reconcile ED discharge ({ed_alert['discharge_date']}): "
+            f"book post-hospitalization follow-up and asthma titration review"
+        ))
+        breakdown.insert(0, {
+            "category": "ED Continuity — Unresolved",
+            "detail": ed_alert["message"],
+            "status": "overdue",
+        })
+
+    for t in overdue:
+        priority_actions.append(f"Address overdue care plan item: {t['task_description']}")
+        breakdown.append({
+            "category": "Care Plan — Overdue",
+            "detail": t.get("reasoning") or t["task_description"],
+            "status": "overdue",
+        })
+
+    for lab in labs:
+        val = f" {lab['value']}{lab.get('unit') or ''}" if lab.get("value") else ""
+        priority_actions.append(f"Review abnormal result: {lab['test']}{val}")
+        breakdown.append({
+            "category": f"Laboratory — {lab['test']}",
+            "detail": lab.get("reasoning", "Result flagged for clinical review"),
+            "status": "overdue",
+        })
+
+    if alert:
+        priority_actions.append(alert.get("description", "Condition monitoring alert active"))
+        breakdown.append({
+            "category": "Condition Monitoring",
+            "detail": alert.get("reasoning", alert.get("description", "")),
+            "status": "pending",
+        })
+
+    for t in pending[:2]:
+        breakdown.append({
+            "category": "Care Plan — Pending",
+            "detail": t.get("reasoning") or t["task_description"],
+            "status": t.get("status", "pending"),
+        })
+
+    if latest_visit:
+        breakdown.append({
+            "category": "Prior Encounter",
+            "detail": f"{latest_visit.get('visit_date', 'N/A')} — {latest_visit.get('visit_reason') or 'No chief complaint recorded'}",
+            "status": "done",
+        })
+
+    if overdue:
+        impression = (
+            f"Returning patient with {condition}; {len(overdue)} overdue care plan item(s) "
+            f"require reconciliation at today's encounter."
+        )
+    elif ed_alert:
+        impression = (
+            f"Returning patient with {condition}; recent ED discharge without booked "
+            f"post-hospitalization follow-up — continuity gap requires closure today."
+        )
+    elif labs:
+        impression = (
+            f"Returning patient with {condition}; abnormal laboratory values identified "
+            f"requiring physician review."
+        )
+    elif alert:
+        impression = f"Returning patient with {condition}; active monitoring alert on file."
+    else:
+        impression = f"Returning patient with {condition}; care plan current — routine continuity visit."
+
+    if not priority_actions:
+        priority_actions.append("No critical flags — proceed with interval history and examination.")
+
+    return {
+        "impression": impression,
+        "priority_actions": priority_actions[:4],
+        "breakdown": breakdown,
+        "patient_label": patient.get("name", "Patient"),
+        "condition": condition,
+        "ed_alert": ed_alert,
+    }

@@ -263,7 +263,7 @@ def seed():
                 "physical_activity": "Light walking 20 min/day",
             },
             "medical_history": {
-                "conditions": ["Type 2 Diabetes (diagnosed 2015)", "Hypertension"],
+                "conditions": ["Type 2 Diabetes (diagnosed 2015)", "Hypertension", "Asthma"],
                 "past_surgeries": ["Appendectomy 2001"],
             },
             "medications": [
@@ -291,7 +291,19 @@ def seed():
             "UPDATE patients SET risk_flags_json=? WHERE id=?",
             (
                 json.dumps({
-                    "risk_flags": ["hypertension", "obesity"],
+                    "risk_flags": ["hypertension", "obesity", "asthma"],
+                    "ed_continuity": {
+                        "severity": "critical",
+                        "facility": "Ottawa Hospital ED",
+                        "discharge_date": "2026-06-12",
+                        "diagnosis": "Acute Shortness of Breath / Asthma Exacerbation",
+                        "message": (
+                            "Discharge Summary received from Ottawa Hospital ED (2026-06-12) "
+                            "for 'Acute Shortness of Breath / Asthma Exacerbation'. Patient was "
+                            "stabilized and discharged, but no post-hospitalization follow-up "
+                            "visit or asthma titration review has been booked."
+                        ),
+                    },
                     "pending_labs": [
                         {
                             "test": "HbA1c",
@@ -325,6 +337,59 @@ def seed():
 
     conn.close()
     print("✓ DB seeded: Emma Chen (new patient) + Marcus Rivera (returning diabetic)")
+
+
+def patch_marcus_demo_data():
+    """Backfill ED continuity + asthma demo data for existing Marcus records."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id, risk_flags_json FROM patients WHERE name='Marcus Rivera'"
+    ).fetchone()
+    if not row:
+        conn.close()
+        return
+    try:
+        flags = json.loads(row["risk_flags_json"] or "{}")
+    except json.JSONDecodeError:
+        flags = {}
+    if flags.get("ed_continuity"):
+        conn.close()
+        return
+    flags["ed_continuity"] = {
+        "severity": "critical",
+        "facility": "Ottawa Hospital ED",
+        "discharge_date": "2026-06-12",
+        "diagnosis": "Acute Shortness of Breath / Asthma Exacerbation",
+        "message": (
+            "Discharge Summary received from Ottawa Hospital ED (2026-06-12) "
+            "for 'Acute Shortness of Breath / Asthma Exacerbation'. Patient was "
+            "stabilized and discharged, but no post-hospitalization follow-up "
+            "visit or asthma titration review has been booked."
+        ),
+    }
+    risk_list = flags.setdefault("risk_flags", ["hypertension", "obesity"])
+    if "asthma" not in risk_list:
+        risk_list.append("asthma")
+    with conn:
+        conn.execute(
+            "UPDATE patients SET risk_flags_json=? WHERE id=?",
+            (json.dumps(flags), row["id"]),
+        )
+        snap_row = conn.execute(
+            "SELECT id, snapshot_json FROM chart_snapshots WHERE patient_id=? ORDER BY id DESC LIMIT 1",
+            (row["id"],),
+        ).fetchone()
+        if snap_row:
+            snap = json.loads(snap_row["snapshot_json"])
+            conds = snap.get("medical_history", {}).get("conditions", [])
+            if not any("asthma" in c.lower() for c in conds):
+                conds.append("Asthma")
+                snap.setdefault("medical_history", {})["conditions"] = conds
+                conn.execute(
+                    "UPDATE chart_snapshots SET snapshot_json=? WHERE id=?",
+                    (json.dumps(snap), snap_row["id"]),
+                )
+    conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +438,13 @@ def get_visits(patient_id: int) -> list[dict]:
 def get_latest_visit(patient_id: int) -> dict | None:
     visits = get_visits(patient_id)
     return visits[0] if visits else None
+
+
+def get_visit(visit_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM visits WHERE id=?", (visit_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_tasks_for_visit(visit_id: int) -> list[dict]:
