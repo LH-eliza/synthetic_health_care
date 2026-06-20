@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}GP Copilot{% endblock %}</title>
+    <meta
+      name="description"
+      content="GP Copilot — AI-assisted chronic care management for primary care physicians"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    {% block head %}{% endblock %}
+  </head>
+  <body data-patient-id="{{ patient.id if patient else '' }}">
+    {% block body %}
+    <div class="app-shell">
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <a href="/" class="topbar-logo">
+          <div class="logo-mark">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"
+                stroke-linecap="round"
+              />
+              <path
+                d="M12 8v4l3 3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          GP Copilot
+        </a>
+        <div class="topbar-divider"></div>
+
+        <div class="topbar-patient">
+          {% if patient %}
+          <span class="patient-header-name">{{ patient.name }}</span>
+          <div class="patient-header-meta">
+            <span>{{ patient.age }}y</span>
+            <span>{{ patient.sex }}</span>
+            <span>{{ patient.dob }}</span>
+            {% if patient.condition %}
+            <span class="badge badge-condition"
+              >{{ patient.condition|title }}</span
+            >
+            {% endif %}
+          </div>
+          {% else %}
+          <span class="text-secondary" style="font-size: 13px"
+            >Select a patient</span
+          >
+          {% endif %}
+        </div>
+
+        {% block topbar_extra %}{% endblock %}
+
+        <div class="topbar-actions">
+          <a href="/settings/date" class="date-pill">
+            <i
+              data-lucide="calendar"
+              style="
+                width: 12px;
+                height: 12px;
+                stroke: currentColor;
+                stroke-width: 1.5;
+              "
+            ></i>
+            {{ today }}
+          </a>
+          <a href="/dashboard" class="btn btn-secondary btn-sm">
+            <i data-lucide="grid"></i> Overview
+          </a>
+          <a href="/" class="btn btn-secondary btn-sm">
+            <i data-lucide="users"></i> Patients
+          </a>
+        </div>
+      </header>
+
+      <!-- LEFT SIDEBAR -->
+      <nav class="sidebar-left">
+        {% block sidebar_left %} {% if patient and patient.snapshot_data %} {%
+        set snap = patient.snapshot_data %}
+
+        <div class="sidebar-panel open">
+          <div class="sidebar-panel-header active">
+            Ongoing Concerns <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% if patient.condition %}
+            <span
+              class="sidebar-tag"
+              style="
+                background: var(--chip-condition-bg);
+                border-color: var(--chip-condition-border);
+                color: var(--chip-condition-text);
+              "
+            >
+              {{ patient.condition|title }}
+            </span>
+            {% endif %} {% set flags = patient.risk_flags_data.get('risk_flags',
+            []) if patient.risk_flags_data is mapping else [] %} {% for flag in
+            flags %}
+            <span class="sidebar-tag">{{ flag|title }}</span>
+            {% endfor %} {% if not patient.condition %}<span class="text-muted"
+              >None recorded</span
+            >{% endif %}
+          </div>
+        </div>
+
+        {% if snap.medical_history %}
+        <div class="sidebar-panel">
+          <div class="sidebar-panel-header">
+            Medical History <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% for cond in snap.medical_history.get('conditions', []) %}
+            <div class="sidebar-item">• {{ cond }}</div>
+            {% endfor %} {% for surg in
+            snap.medical_history.get('past_surgeries', []) %}
+            <div
+              class="sidebar-item text-muted"
+              style="font-size: 11px; padding-left: 8px"
+            >
+              {{ surg }}
+            </div>
+            {% endfor %} {% if not snap.medical_history.get('conditions') and
+            not snap.medical_history.get('past_surgeries') %}
+            <span class="text-muted">Not recorded</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %} {% if snap.social_history %}
+        <div class="sidebar-panel">
+          <div class="sidebar-panel-header">
+            Social History <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% for k, v in snap.social_history.items() %} {% if v and v !=
+            'null' %}
+            <div class="sidebar-item">
+              <strong>{{ k|replace('_',' ')|title }}:</strong> {{ v }}
+            </div>
+            {% endif %} {% endfor %}
+          </div>
+        </div>
+        {% endif %} {% block sidebar_reminders %}{% endblock %} {% else %}
+        <div class="sidebar-panel open">
+          <div class="sidebar-panel-header active">
+            Chart Status <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            <div class="text-muted" style="font-style: italic; font-size: 12px">
+              No chart history for this patient.
+            </div>
+          </div>
+        </div>
+        {% endif %} {% endblock %}
+      </nav>
+
+      <!-- CENTER PANEL -->
+      <main class="center-panel">
+        <div class="center-content">{% block content %}{% endblock %}</div>
+      </main>
+
+      <!-- RIGHT SIDEBAR -->
+      <aside class="sidebar-right">
+        {% block sidebar_right %} {% if patient and patient.snapshot_data %} {%
+        set snap = patient.snapshot_data %}
+
+        <div class="sidebar-panel open">
+          <div class="sidebar-panel-header active">
+            Allergies <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% for a in snap.get('allergies', []) %}
+            <div class="allergy-item">
+              <i data-lucide="alert-triangle"></i> {{ a }}
+            </div>
+            {% endfor %} {% if not snap.get('allergies') %}<span
+              class="text-muted"
+              >None on record</span
+            >{% endif %}
+          </div>
+        </div>
+
+        {% if snap.get('medications') %}
+        <div class="sidebar-panel open">
+          <div class="sidebar-panel-header active">
+            Medications <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% for med in snap.medications %}
+            <div class="sidebar-med">
+              <span class="sidebar-med-name">{{ med.name }}</span>
+              <span class="sidebar-med-detail"
+                >{{ med.dose }} · {{ med.frequency }}</span
+              >
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %} {% if snap.get('family_history') %}
+        <div class="sidebar-panel">
+          <div class="sidebar-panel-header">
+            Family History <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% for fh in snap.family_history %}
+            <div class="sidebar-item">{{ fh }}</div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %} {% if snap.get('vaccines') %}
+        <div class="sidebar-panel">
+          <div class="sidebar-panel-header">
+            Immunizations <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            {% for v in snap.vaccines %}
+            <div class="sidebar-item">
+              <strong>{{ v.name }}</strong>
+              <span class="text-muted" style="font-size: 11px; display: block"
+                >{{ v.date }}</span
+              >
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %} {% block sidebar_right_extra %}{% endblock %} {% else %}
+        <div class="sidebar-panel open">
+          <div class="sidebar-panel-header active">
+            Allergies <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            <span class="text-muted">Not recorded</span>
+          </div>
+        </div>
+        <div class="sidebar-panel">
+          <div class="sidebar-panel-header">
+            Medications <span class="sidebar-panel-chevron">›</span>
+          </div>
+          <div class="sidebar-panel-body">
+            <span class="text-muted">Not recorded</span>
+          </div>
+        </div>
+        {% endif %} {% endblock %}
+      </aside>
+    </div>
+    {% endblock %}
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+      lucide.createIcons();
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

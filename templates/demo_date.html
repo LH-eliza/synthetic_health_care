@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Date Settings — GP Copilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:wght@500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div style="background:var(--bg-primary);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="settings-page">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <i data-lucide="calendar" style="width:18px;height:18px;stroke:var(--text-muted);stroke-width:1.5"></i>
+      <h1>Date Settings</h1>
+    </div>
+    <p class="text-secondary" style="font-size:13px;margin-top:4px;margin-bottom:4px">
+      Advance the system date to update task statuses across all patients.
+    </p>
+
+    <div class="date-display">{{ today }}</div>
+
+    <form method="POST" action="/settings/date">
+      <label class="section-label" for="days">Days to advance</label>
+      <input
+        id="days"
+        name="days"
+        type="number"
+        class="settings-input"
+        value="7"
+        min="1"
+        max="365"
+      >
+      <button type="submit" class="btn btn-primary btn-lg w-full">
+        <i data-lucide="fast-forward"></i> Advance Date
+      </button>
+    </form>
+
+    <div class="alert alert-info mt-16" style="font-size:12px">
+      <i data-lucide="info"></i>
+      <div>
+        Tasks past their due date with no response will be marked
+        <strong>overdue</strong>.
+        Tasks not yet due with no response remain
+        <strong>no data</strong>.
+        Return to a patient's chart to see the pre-visit briefing update.
+      </div>
+    </div>
+
+    <div style="margin-top:20px;text-align:center">
+      <a href="/" class="btn btn-secondary">
+        <i data-lucide="arrow-left"></i> Patients
+      </a>
+    </div>
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

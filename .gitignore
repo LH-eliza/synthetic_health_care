@@ -1,0 +1,7 @@
+gp_copilot.db
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+patient-portal/node_modules/

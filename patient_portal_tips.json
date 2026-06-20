@@ -1,0 +1,8 @@
+[
+  { "id": "tip_1", "category": "Diet", "color": "green", "title": "Eat less salt", "detail": "<1 tsp sodium/day; avoid packaged soups/processed meats" },
+  { "id": "tip_2", "category": "Exercise", "color": "teal", "title": "Move for 30 minutes, most days", "detail": "Brisk walk = medication-level effect" },
+  { "id": "tip_3", "category": "Hydration", "color": "blue", "title": "Drink more water, less alcohol", "detail": "≤1 drink/day; hydration helps heart" },
+  { "id": "tip_4", "category": "Diet", "color": "amber", "title": "Eat more potassium-rich foods", "detail": "Bananas, sweet potatoes, DASH diet" },
+  { "id": "tip_5", "category": "Sleep", "color": "purple", "title": "Sleep 7–9 hours a night", "detail": "Snoring/poor sleep raises BP" },
+  { "id": "tip_6", "category": "Stress", "color": "amber", "title": "Find small ways to reduce stress", "detail": "5 min slow breathing; Calm/Headspace" }
+]

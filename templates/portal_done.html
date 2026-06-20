@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Response Received — GP Copilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:wght@500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="portal">
+<div class="portal-shell" style="text-align:center;padding-top:60px">
+  <div style="display:flex;justify-content:center;margin-bottom:16px">
+    {% if action == 'confirmed' %}
+      <i data-lucide="check-circle" style="width:48px;height:48px;stroke:var(--status-done);stroke-width:1.2"></i>
+    {% else %}
+      <i data-lucide="send" style="width:48px;height:48px;stroke:var(--chip-followup-text);stroke-width:1.2"></i>
+    {% endif %}
+  </div>
+  <h1 style="font-family:var(--font-serif);font-size:22px;margin-bottom:8px">
+    {% if action == 'confirmed' %}Task Marked Complete{% else %}Reading Submitted{% endif %}
+  </h1>
+  <p style="color:var(--text-secondary);font-size:14px;margin-bottom:28px;max-width:380px;margin-inline:auto;line-height:1.7">
+    {% if patient %}Thank you, {{ patient.name.split()[0] }}.{% endif %}
+    Your response has been recorded and will be reviewed by your care team.
+  </p>
+  <div class="portal-card" style="text-align:left;max-width:400px;margin-inline:auto">
+    <div class="portal-card-title">What happens next?</div>
+    <p style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+      Your GP will see your response before your next visit.
+      This information helps prepare your care plan and keeps your treatment on track.
+    </p>
+  </div>
+  <div class="privacy-notice" style="max-width:400px;margin-inline:auto">
+    <i data-lucide="lock" style="width:11px;height:11px;stroke:currentColor;stroke-width:1.5;vertical-align:middle;margin-right:4px"></i>
+    Secure message — GP Copilot
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

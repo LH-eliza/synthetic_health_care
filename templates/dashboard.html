@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Overview — GP Copilot{% endblock %}
+
+{% block sidebar_left %}
+<div class="sidebar-panel open">
+  <div class="sidebar-panel-header active">
+    Patients <span class="sidebar-panel-chevron">›</span>
+  </div>
+  <div class="sidebar-panel-body">
+    {% for p in patients %}
+    <a href="/patient/{{ p.id }}" style="display:block;padding:5px 0;border-bottom:1px solid var(--border-subtle);text-decoration:none" class="sidebar-item">
+      <span style="font-weight:500;color:var(--text-primary)">{{ p.name }}</span>
+      <span class="text-muted" style="font-size:11px"> · {{ p.age }}y</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block sidebar_right %}
+<div class="sidebar-panel open">
+  <div class="sidebar-panel-header active">
+    System <span class="sidebar-panel-chevron">›</span>
+  </div>
+  <div class="sidebar-panel-body">
+    <div class="sidebar-item"><strong>Date:</strong> {{ today }}</div>
+    <a href="/settings/date" class="btn btn-secondary btn-sm w-full mt-8">
+      <i data-lucide="calendar"></i> Date Settings
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <div>
+    <h2>Overview</h2>
+    <p class="text-secondary" style="font-size:13px;margin-top:4px">All patients and their care status.</p>
+  </div>
+</div>
+
+<table class="data-table" id="dashboard-table">
+  <thead>
+    <tr>
+      <th>Patient</th>
+      <th>Age</th>
+      <th>Condition</th>
+      <th>Visit Type</th>
+      <th>Open Tasks</th>
+      <th>Completed</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in patients %}
+    <tr>
+      <td>
+        <span style="font-family:var(--font-serif);font-size:14px;font-weight:500;color:var(--text-primary)">{{ p.name }}</span>
+      </td>
+      <td>{{ p.age }}y · {{ p.sex }}</td>
+      <td>
+        {% if p.condition %}
+          <span class="badge badge-condition">{{ p.condition|title }}</span>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if p.flow == 'A' %}
+          <span class="badge badge-flow-a">First Visit</span>
+        {% else %}
+          <span class="badge badge-flow-b">Returning</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if p.open_tasks %}
+          {% for task in p.open_tasks %}
+            <div class="d-flex align-center gap-8" style="margin-bottom:5px">
+              <div class="task-dot {{ task.status }}"></div>
+              <span style="font-size:12px;color:var(--text-secondary)">
+                {{ task.description[:38] }}{% if task.description|length > 38 %}…{% endif %}
+              </span>
+              <span class="chip-status-pill status-{{ task.status }}" style="font-size:10px">{{ task.status }}</span>
+            </div>
+          {% endfor %}
+        {% else %}
+          <span class="text-muted" style="font-size:12px">—</span>
+        {% endif %}
+      </td>
+      <td>
+        <span style="font-size:13px;color:var(--status-done);font-weight:600">{{ p.done_tasks|length }}</span>
+        <span class="text-muted" style="font-size:12px"> done</span>
+      </td>
+      <td>
+        <a href="/patient/{{ p.id }}" class="btn btn-secondary btn-sm">Open</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>lucide.createIcons();</script>
+{% endblock %}
