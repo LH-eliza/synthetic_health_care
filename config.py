@@ -91,7 +91,7 @@ with open(_categories_path) as _f:
 # ---------------------------------------------------------------------------
 # Follow-up task types
 # ---------------------------------------------------------------------------
-TASK_TYPES = ["confirmation", "recurring_input"]
+TASK_TYPES = ["confirmation", "recurring_input", "upload"]
 
 # Task statuses — stored in DB and computed by rules engine
 TASK_STATUSES = ["pending", "done", "overdue", "no_data"]

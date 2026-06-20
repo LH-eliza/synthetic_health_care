@@ -13,8 +13,8 @@ Routes:
   GET  /flow-b/<id>               → returning patient pre-visit + chips
   POST /flow-b/<id>/start-visit   → create visit record
   POST /flow-b/<id>/generate-note → LLM dual output generation
-  POST /flow-b/<id>/confirm-note  → save visit + follow-up tasks
-  POST /flow-b/<id>/send-portal   → generate secure token + mock send
+  POST /flow-b/<id>/confirm-note  → save visit + follow-up tasks (legacy)
+  POST /flow-b/<id>/send-to-patient → save notes, sync approved tasks, update portal
   GET  /demo/advance-date         → advance demo date form
   POST /demo/advance-date         → advance demo date by N days
   GET  /dashboard                 → multi-patient secondary view
@@ -22,7 +22,7 @@ Routes:
 
 import json
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
@@ -42,7 +42,9 @@ CORS(app)
 # Initialize DB on startup
 db.init_db()
 db.seed()
-db.patch_marcus_demo_data()
+db.ensure_portal_demo()
+
+PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "http://localhost:5101")
 
 
 # ---------------------------------------------------------------------------
@@ -71,12 +73,19 @@ def _enrich_patient(p: dict, today: date) -> dict:
 def index():
     today = db.get_demo_date()
     patients = db.get_all_patients()
+    demo_patient_id = db.get_demo_patient_id()
     for p in patients:
         p["age"] = _patient_age(p["dob"], today)
         visits = db.get_visits(p["id"])
         p["visit_count"] = len(visits)
         p["flow"] = "A" if not visits else "B"
-    return render_template("index.html", patients=patients, today=today)
+        p["is_portal_demo"] = p["id"] == demo_patient_id
+    return render_template(
+        "index.html",
+        patients=patients,
+        today=today,
+        portal_demo_url=f"{PORTAL_BASE_URL}/p/demo",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -172,12 +181,6 @@ def flow_b(patient_id: int):
         responses = db.get_responses_for_patient_tasks(patient_id)
         chips = rules_engine.build_previsit_chips(patient, prior_tasks, responses, today)
 
-    executive_brief = rules_engine.build_executive_brief(
-        patient, chips, latest_visit, today
-    ) if chips else None
-
-    ed_continuity_alert = rules_engine.get_ed_continuity_alert(patient, today)
-
     snap = db.get_latest_snapshot(patient_id)
 
     # Check if there's already a new visit started in session
@@ -189,6 +192,29 @@ def flow_b(patient_id: int):
         conn.close()
         active_visit = dict(row) if row else None
 
+    portal_link = None
+    portal_sent_visit = None
+    portal_sent_tasks = []
+    token = db.get_patient_portal_token(patient_id)
+    token_data = db.get_token_data(token)
+    if token_data and token_data.get("visit_id"):
+        visit_for_portal = db.get_visit(token_data["visit_id"])
+        if visit_for_portal and (visit_for_portal.get("patient_summary_text") or "").strip():
+            portal_link = db.get_portal_url(token, PORTAL_BASE_URL)
+            portal_sent_visit = visit_for_portal
+            portal_sent_tasks = db.get_tasks_for_visit(visit_for_portal["id"])
+
+    portal_sent_payload = None
+    if portal_sent_visit and not active_visit:
+        portal_sent_payload = {
+            "visit_id": portal_sent_visit["id"],
+            "visit_date": portal_sent_visit["visit_date"],
+            "visit_reason": portal_sent_visit.get("visit_reason") or "",
+            "task_count": len(portal_sent_tasks),
+            "tasks": [t["description"] for t in portal_sent_tasks],
+            "portal_url": portal_link,
+        }
+
     return render_template(
         "flow_b.html",
         patient=patient,
@@ -196,10 +222,11 @@ def flow_b(patient_id: int):
         latest_visit=latest_visit,
         prior_tasks=prior_tasks,
         chips=chips,
-        executive_brief=executive_brief,
-        ed_continuity_alert=ed_continuity_alert,
         snapshot=snap,
         active_visit=active_visit,
+        portal_link=portal_link,
+        portal_sent_payload=portal_sent_payload,
+        portal_demo_url=f"{PORTAL_BASE_URL}/p/demo",
     )
 
 
@@ -275,29 +302,75 @@ def flow_b_confirm_note(patient_id: int):
     })
 
 
-@app.route("/flow-b/<int:patient_id>/send-portal", methods=["POST"])
-def flow_b_send_portal(patient_id: int):
-    """Generate secure token and mock-send patient portal link."""
+@app.route("/flow-b/<int:patient_id>/send-to-patient", methods=["POST"])
+def flow_b_send_to_patient(patient_id: int):
+    """
+    Doctor approves tasks and sends to patient portal.
+    Saves visit notes, syncs approved tasks, and updates the patient's portal
+    automatically — no secure link is sent.
+    """
     data = request.get_json()
-    visit_id = data.get("visit_id")
+    visit_id = data.get("visit_id") or session.get(f"active_visit_{patient_id}")
+    chart_entry = data.get("chart_entry", "")
+    patient_summary = data.get("patient_summary", "")
+    tasks = data.get("tasks", [])
+
     if not visit_id:
-        return jsonify({"error": "visit_id required"}), 400
+        return jsonify({"error": "No active visit found. Start a visit first."}), 400
+    if not (patient_summary or "").strip():
+        return jsonify({"error": "Generate and review the patient summary before sending."}), 400
 
-    token = db.create_secure_token(patient_id, visit_id)
+    visit = db.get_visit(int(visit_id))
+    if not visit:
+        return jsonify({"error": "Visit not found"}), 404
+    if visit["patient_id"] != patient_id:
+        return jsonify({"error": "Visit does not belong to this patient"}), 400
 
-    # In production this would call OceanMD / SMS gateway. We log + return URL.
-    portal_url = f"http://localhost:5101/p/{token}"
+    db.update_visit_notes(int(visit_id), chart_entry, patient_summary)
+    task_ids = db.sync_followup_tasks(patient_id, int(visit_id), tasks)
+    token = db.publish_visit_to_portal(patient_id, int(visit_id))
+    portal_url = db.get_portal_url(token, PORTAL_BASE_URL)
+
+    session[f"active_visit_{patient_id}"] = None
+
+    patient = db.get_patient(patient_id)
+    first_name = (patient["name"].split()[0] if patient else "Patient")
+
+    sent_tasks = db.get_tasks_for_visit(int(visit_id))
 
     return jsonify({
         "success": True,
+        "visit_id": visit_id,
+        "visit_date": visit["visit_date"],
+        "visit_reason": visit.get("visit_reason") or "",
+        "task_count": len(task_ids),
+        "tasks": [t["description"] for t in sent_tasks],
         "token": token,
         "portal_url": portal_url,
-        "message": "Secure link generated. Patient notified via secure message.",
-        "ocean_analog": {
-            "secure_message": True,
-            "allow_patient_reply": True,
-            "notify_on_view": True,
-        },
+        "sent_at": datetime.now().strftime("%b %d, %Y at %I:%M %p"),
+        "message": (
+            f"Visit logged and sent to {first_name}'s patient portal "
+            f"with {len(task_ids)} approved task(s)."
+        ),
+    })
+
+
+@app.route("/flow-b/<int:patient_id>/send-portal", methods=["POST"])
+def flow_b_send_portal(patient_id: int):
+    """Legacy alias — redirects to send-to-patient with visit_id only."""
+    data = request.get_json() or {}
+    visit_id = data.get("visit_id")
+    if not visit_id:
+        return jsonify({"error": "visit_id required"}), 400
+    visit = db.get_visit(int(visit_id))
+    if not visit:
+        return jsonify({"error": "Visit not found"}), 404
+    token = db.publish_visit_to_portal(patient_id, int(visit_id))
+    return jsonify({
+        "success": True,
+        "token": token,
+        "portal_url": db.get_portal_url(token, PORTAL_BASE_URL),
+        "message": "Patient portal updated.",
     })
 
 

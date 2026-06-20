@@ -3,105 +3,25 @@
    ========================================================================= */
 
 // -------------------------------------------------------------------------
-// Live patient intake injection + ED demo
-// -------------------------------------------------------------------------
-const patientIntakeCard = document.getElementById('patient-intake-card');
-const patientIntakeText = document.getElementById('patient-intake-text');
-const demoVisitReasonBtn = document.getElementById('btn-demo-visit-reason');
-
-const DEMO_VISIT_REASON = 'Mental health check-in — work stress; post-ED asthma flare';
-
-const PATIENT_INTAKE_MESSAGES = {
-  mental: (
-    "I am here for a mental health check-in because work has been super stressful, "
-    + "but also my asthma has been playing up again since I got out of the hospital last week."
-  ),
-  asthma: (
-    "My breathing got really bad after I left the ER last week. I have my rescue inhaler "
-    + "but I am not sure my asthma plan is right anymore."
-  ),
-  diabetes: (
-    "I'm here about my diabetes meds — the Metformin dose change didn't happen and "
-    + "my sugars have been all over the place."
-  ),
-};
-
-function resolvePatientIntakeText(reason) {
-  const r = (reason || '').toLowerCase();
-  if (!r.trim()) return null;
-  if (r.includes('mental') || r.includes('stress') || r.includes('check-in')) {
-    return PATIENT_INTAKE_MESSAGES.mental;
-  }
-  if (r.includes('asthma') || r.includes('breath') || r.includes('ed') || r.includes('hospital')) {
-    return PATIENT_INTAKE_MESSAGES.asthma;
-  }
-  if (r.includes('diabetes') || r.includes('metformin') || r.includes('medication')) {
-    return PATIENT_INTAKE_MESSAGES.diabetes;
-  }
-  return `"I'm here today because: ${reason.trim()}"`;
-}
-
-function showPatientIntake(reason) {
-  const text = resolvePatientIntakeText(reason);
-  if (!text || !patientIntakeCard || !patientIntakeText) return;
-  patientIntakeText.textContent = text.startsWith('"') ? text : `"${text}"`;
-  patientIntakeCard.classList.remove('hidden');
-  patientIntakeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function bindPatientIntakeInput(inputEl) {
-  if (!inputEl) return;
-  let debounce;
-  inputEl.addEventListener('input', () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => showPatientIntake(inputEl.value), 280);
-  });
-}
-
-// -------------------------------------------------------------------------
-// Physician Focus Mode (Flow B)
+// Cognitive Load Mode toggle (Flow B)
 // -------------------------------------------------------------------------
 const cognitiveLoadSwitch = document.getElementById('cognitive-load-switch');
 const cognitiveModeBadge = document.getElementById('cognitive-mode-badge');
-const COPILOT_STORAGE_KEY = 'gp-copilot-physician-focus';
 
-function isCopilotMode() {
-  return document.body.classList.contains('cognitive-mode-copilot');
-}
-
-function setCognitiveLoadMode(copilotActive, { persist = true } = {}) {
+function setCognitiveLoadMode(copilotActive) {
   document.body.classList.toggle('cognitive-mode-copilot', copilotActive);
   if (cognitiveModeBadge) {
-    cognitiveModeBadge.textContent = copilotActive ? 'Clinical Copilot' : 'Full EMR';
+    cognitiveModeBadge.textContent = copilotActive ? 'Copilot AI Active' : 'Standard EMR';
   }
   if (cognitiveLoadSwitch) {
     cognitiveLoadSwitch.checked = copilotActive;
   }
-  if (persist) {
-    localStorage.setItem(COPILOT_STORAGE_KEY, copilotActive ? 'copilot' : 'emr');
-  }
-  if (copilotActive) {
-    ensureVisitStarted({ silent: true });
-  }
-  updateCopilotTaskLabels();
-}
-
-function updateCopilotTaskLabels() {
-  document.querySelectorAll('.task-approve-label').forEach(el => {
-    el.textContent = isCopilotMode() ? 'Authorize' : 'Approve';
-  });
 }
 
 if (cognitiveLoadSwitch) {
   cognitiveLoadSwitch.addEventListener('change', () => {
     setCognitiveLoadMode(cognitiveLoadSwitch.checked);
   });
-}
-
-// Restore physician focus preference (default: on for streamlined workflow)
-if (cognitiveLoadSwitch) {
-  const saved = localStorage.getItem(COPILOT_STORAGE_KEY);
-  setCognitiveLoadMode(saved !== 'emr', { persist: false });
 }
 
 // -------------------------------------------------------------------------
@@ -367,87 +287,35 @@ if (confirmAllBtn) {
 // -------------------------------------------------------------------------
 const startVisitBtn = document.getElementById('btn-start-visit');
 const visitReasonInput = document.getElementById('visit-reason-input');
-const copilotChiefComplaint = document.getElementById('copilot-chief-complaint');
 let activeVisitId = null;
-
-bindPatientIntakeInput(visitReasonInput);
-bindPatientIntakeInput(copilotChiefComplaint);
-
-if (demoVisitReasonBtn) {
-  demoVisitReasonBtn.addEventListener('click', async () => {
-    if (visitReasonInput) visitReasonInput.value = DEMO_VISIT_REASON;
-    if (copilotChiefComplaint) copilotChiefComplaint.value = DEMO_VISIT_REASON;
-    showPatientIntake(DEMO_VISIT_REASON);
-    if (isCopilotMode()) {
-      await ensureVisitStarted({ silent: true });
-    }
-  });
-}
-
-(function initPatientIntakeFromActiveVisit() {
-  const reason = copilotChiefComplaint?.value?.trim() || visitReasonInput?.value?.trim();
-  if (reason) showPatientIntake(reason);
-})();
-
-async function ensureVisitStarted({ silent = false } = {}) {
-  const existing = activeVisitId || document.getElementById('active-visit-id')?.value;
-  if (existing) {
-    activeVisitId = existing;
-    document.getElementById('visit-started-section')?.classList.remove('hidden');
-    document.getElementById('start-visit-section')?.classList.add('hidden');
-    return existing;
-  }
-
-  const reason = (
-    copilotChiefComplaint?.value?.trim()
-    || visitReasonInput?.value?.trim()
-    || document.querySelector('.exec-impression')?.textContent?.slice(0, 80)
-    || 'Return visit — clinical review'
-  );
-
-  const patientId = document.body.dataset.patientId;
-  if (!patientId) return null;
-
-  try {
-    const resp = await fetch(`/flow-b/${patientId}/start-visit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visit_reason: reason }),
-    });
-    const data = await resp.json();
-    if (!resp.ok || data.error) {
-      if (!silent) {
-        showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
-      }
-      return null;
-    }
-    activeVisitId = data.visit_id;
-    document.getElementById('active-visit-id')?.setAttribute('value', activeVisitId);
-    document.getElementById('visit-started-section')?.classList.remove('hidden');
-    document.getElementById('start-visit-section')?.classList.add('hidden');
-    if (copilotChiefComplaint && !copilotChiefComplaint.value) {
-      copilotChiefComplaint.value = reason;
-    }
-    showPatientIntake(reason);
-    if (!silent) {
-      showAlert(document.getElementById('flow-b-alerts'), 'info', `Encounter opened: ${reason}`);
-    }
-    return activeVisitId;
-  } catch (err) {
-    if (!silent) {
-      showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
-    }
-    return null;
-  }
-}
 
 if (startVisitBtn) {
   startVisitBtn.addEventListener('click', async () => {
+    const reason = visitReasonInput?.value?.trim() || 'Unspecified';
     setButtonLoading(startVisitBtn, true, 'Starting visit…');
-    const reason = visitReasonInput?.value?.trim() || DEMO_VISIT_REASON;
-    showPatientIntake(reason);
-    await ensureVisitStarted({ silent: false });
-    setButtonLoading(startVisitBtn, false);
+    try {
+      const patientId = document.body.dataset.patientId;
+      const resp = await fetch(`/flow-b/${patientId}/start-visit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visit_reason: reason }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
+        return;
+      }
+      activeVisitId = data.visit_id;
+      document.getElementById('active-visit-id')?.setAttribute('value', activeVisitId);
+      document.getElementById('visit-started-section')?.classList.remove('hidden');
+      document.getElementById('start-visit-section')?.classList.add('hidden');
+      showAlert(document.getElementById('flow-b-alerts'), 'info',
+        `Visit started (reason: ${reason}). Pre-visit chips remain active for reference.`);
+    } catch (err) {
+      showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
+    } finally {
+      setButtonLoading(startVisitBtn, false);
+    }
   });
 }
 
@@ -462,14 +330,10 @@ const patientSummaryOutput = document.getElementById('patient-summary-output');
 let generatedOutput = null;
 
 if (generateNoteBtn) {
-  const runGenerateNote = async () => {
-    if (isCopilotMode()) {
-      await ensureVisitStarted({ silent: true });
-    }
+  generateNoteBtn.addEventListener('click', async () => {
     const notes = visitNotesTextarea?.value?.trim();
     if (!notes) {
-      showAlert(document.getElementById('flow-b-alerts'), 'warning',
-        isCopilotMode() ? 'Enter encounter documentation before generating.' : 'Enter visit notes before generating.');
+      showAlert(document.getElementById('flow-b-alerts'), 'warning', 'Enter visit notes before generating.');
       return;
     }
     setButtonLoading(generateNoteBtn, true, 'Generating…');
@@ -492,25 +356,12 @@ if (generateNoteBtn) {
       populateSuggestedTasks(generatedOutput.suggested_tasks || []);
       dualOutputSection?.classList.remove('hidden');
       document.getElementById('confirm-note-section')?.classList.remove('hidden');
-      document.getElementById('copilot-authorize-bar')?.classList.remove('hidden');
-      dualOutputSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       showAlert(document.getElementById('flow-b-alerts'), 'success',
-        isCopilotMode()
-          ? 'Clinical draft ready. Review chart entry and authorize care plan orders below.'
-          : 'Outputs generated. Review AI-suggested follow-up tasks before confirming.');
+        'Outputs generated. Review and approve follow-up tasks, then click Send to Patient.');
     } catch (err) {
       showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
     } finally {
       setButtonLoading(generateNoteBtn, false);
-    }
-  };
-
-  generateNoteBtn.addEventListener('click', runGenerateNote);
-
-  visitNotesTextarea?.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      runGenerateNote();
     }
   });
 }
@@ -542,9 +393,21 @@ function updateTaskListEmptyState() {
   }
 }
 
+function syncTaskMetricField(row) {
+  const type = row.querySelector('[name="task_type"]')?.value;
+  const metric = row.querySelector('[name="task_metric"]');
+  if (!metric) return;
+  const isUpload = type === 'upload';
+  metric.disabled = isUpload;
+  metric.placeholder = isUpload ? 'N/A for uploads' : 'Metric (optional)';
+  if (isUpload) metric.value = '';
+  metric.style.opacity = isUpload ? '0.45' : '1';
+}
+
 function bindTaskRowEvents(row) {
   const approve = row.querySelector('.task-approve');
   const label = row.querySelector('.task-approve-label');
+  const typeSelect = row.querySelector('[name="task_type"]');
   const syncRejected = () => {
     row.classList.toggle('task-row-rejected', approve && !approve.checked);
     updateTaskListEmptyState();
@@ -556,7 +419,9 @@ function bindTaskRowEvents(row) {
       syncRejected();
     }
   });
+  typeSelect?.addEventListener('change', () => syncTaskMetricField(row));
   syncRejected();
+  syncTaskMetricField(row);
 }
 
 function addTaskRow(task = {}, { suggested = false } = {}) {
@@ -578,6 +443,7 @@ function addTaskRow(task = {}, { suggested = false } = {}) {
     <select name="task_type">
       <option value="confirmation" ${type === 'confirmation' ? 'selected' : ''}>Confirmation</option>
       <option value="recurring_input" ${type === 'recurring_input' ? 'selected' : ''}>Reading</option>
+      <option value="upload" ${type === 'upload' ? 'selected' : ''}>Upload</option>
     </select>
     <input type="text" name="task_metric" placeholder="Metric (optional)" value="${escapeHtmlAttr(metric)}" title="e.g. HbA1c, fasting_glucose" />
     <input type="date" name="task_due" value="${due}" />
@@ -595,7 +461,6 @@ function addTaskRow(task = {}, { suggested = false } = {}) {
   bindTaskRowEvents(row);
   taskList?.appendChild(row);
   updateTaskListEmptyState();
-  updateCopilotTaskLabels();
   return row;
 }
 
@@ -629,11 +494,101 @@ if (addTaskBtn) {
 }
 
 // -------------------------------------------------------------------------
-// Flow B — Confirm / authorize encounter
+// Flow B — Visit logged state (after send to patient)
 // -------------------------------------------------------------------------
-const confirmNoteBtn = document.getElementById('btn-confirm-note');
-const copilotAuthorizeBtn = document.getElementById('btn-copilot-authorize');
-const copilotSendPortalCheckbox = document.getElementById('copilot-send-portal');
+function updateSidebarPortalSent(data) {
+  const body = document.getElementById('sidebar-portal-body');
+  if (!body) return;
+  const taskCount = data.task_count ?? (data.tasks?.length ?? 0);
+  const visitDate = data.visit_date || '';
+  const portalUrl = data.portal_url || '';
+  body.innerHTML = `
+    <div class="sidebar-portal-sent">
+      <div class="ocean-status-indicator sidebar-portal-sent__badge">
+        <div class="ocean-dot"></div>
+        <span>Sent &amp; logged</span>
+      </div>
+      <div class="sidebar-portal-sent__meta">${taskCount} task(s) · ${visitDate}</div>
+      ${portalUrl ? `<a href="${escapeHtml(portalUrl)}" target="_blank" class="btn btn-ocean btn-sm" style="width:100%;margin-top:8px">View portal</a>` : ''}
+    </div>
+  `;
+}
+
+function showVisitLoggedState(data) {
+  const alerts = document.getElementById('flow-b-alerts');
+  if (alerts) alerts.innerHTML = '';
+
+  document.getElementById('start-visit-section')?.classList.add('hidden');
+  document.getElementById('visit-started-section')?.classList.add('hidden');
+  document.getElementById('visit-logged-section')?.classList.remove('hidden');
+
+  const msgEl = document.getElementById('visit-logged-message');
+  if (msgEl) {
+    msgEl.textContent = data.message || 'Chart entry saved. Patient portal updated with approved tasks.';
+  }
+  const timeEl = document.getElementById('visit-logged-time');
+  if (timeEl) timeEl.textContent = data.sent_at || data.visit_date || '—';
+  const dateEl = document.getElementById('visit-logged-date');
+  if (dateEl) dateEl.textContent = data.visit_date || '—';
+  const countEl = document.getElementById('visit-logged-task-count');
+  if (countEl) countEl.textContent = String(data.task_count ?? (data.tasks?.length ?? 0));
+
+  const taskList = document.getElementById('visit-logged-task-list');
+  if (taskList) {
+    taskList.innerHTML = '';
+    (data.tasks || []).forEach(desc => {
+      const li = document.createElement('li');
+      li.textContent = desc;
+      taskList.appendChild(li);
+    });
+    taskList.classList.toggle('hidden', !(data.tasks && data.tasks.length));
+  }
+
+  const portalLink = document.getElementById('visit-logged-portal-link');
+  if (portalLink && data.portal_url) {
+    portalLink.href = data.portal_url;
+  }
+
+  updateSidebarPortalSent(data);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+const portalSentBootstrap = document.getElementById('portal-sent-bootstrap');
+if (portalSentBootstrap) {
+  try {
+    const data = JSON.parse(portalSentBootstrap.textContent);
+    showVisitLoggedState(data);
+  } catch (_) { /* ignore malformed bootstrap */ }
+}
+
+document.getElementById('btn-start-new-visit')?.addEventListener('click', () => {
+  document.getElementById('visit-logged-section')?.classList.add('hidden');
+  document.getElementById('start-visit-section')?.classList.remove('hidden');
+  generatedOutput = null;
+  activeVisitId = null;
+  document.getElementById('active-visit-id')?.setAttribute('value', '');
+  document.getElementById('saved-visit-id')?.setAttribute('value', '');
+  if (visitNotesTextarea) visitNotesTextarea.value = '';
+  dualOutputSection?.classList.add('hidden');
+  const taskList = document.getElementById('task-list');
+  if (taskList) taskList.innerHTML = '';
+  taskSuggestionsBanner?.classList.add('hidden');
+  updateTaskListEmptyState();
+  document.getElementById('flow-b-alerts')?.replaceChildren();
+});
+
+// -------------------------------------------------------------------------
+// Flow B — Send approved tasks to patient portal
+// -------------------------------------------------------------------------
+const sendPortalBtn = document.getElementById('btn-send-portal');
 
 function collectApprovedTasks() {
   const tasks = [];
@@ -653,127 +608,48 @@ function collectApprovedTasks() {
   return tasks;
 }
 
-async function confirmEncounter({ sendPortal = false, triggerBtn = null } = {}) {
-  if (!generatedOutput) {
-    showAlert(document.getElementById('flow-b-alerts'), 'warning', 'Generate clinical draft first.');
-    return;
-  }
-
-  const tasks = collectApprovedTasks();
-  if (document.querySelectorAll('.task-row').length > 0 && tasks.length === 0) {
-    showAlert(document.getElementById('flow-b-alerts'), 'warning',
-      isCopilotMode()
-        ? 'No care plan orders authorized. Check at least one order to issue.'
-        : 'No tasks approved. Check at least one task to include, or confirm without tasks.');
-    return;
-  }
-
-  const patientId = document.body.dataset.patientId;
-  let visitId = activeVisitId || document.getElementById('active-visit-id')?.value;
-  if (!visitId && isCopilotMode()) {
-    visitId = await ensureVisitStarted({ silent: true });
-  }
-
-  if (triggerBtn) setButtonLoading(triggerBtn, true, isCopilotMode() ? 'Authorizing…' : 'Saving visit…');
-
-  try {
-    const resp = await fetch(`/flow-b/${patientId}/confirm-note`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        visit_id: visitId,
-        chart_entry: generatedOutput.chart_entry,
-        patient_summary: generatedOutput.patient_summary,
-        tasks,
-      }),
-    });
-    const data = await resp.json();
-    if (!resp.ok || data.error) {
-      showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
+if (sendPortalBtn) {
+  sendPortalBtn.addEventListener('click', async () => {
+    if (!generatedOutput) {
+      showAlert(document.getElementById('flow-b-alerts'), 'warning', 'Generate the visit note first.');
       return;
     }
 
-    document.getElementById('saved-visit-id')?.setAttribute('value', visitId);
-    if (confirmNoteBtn) confirmNoteBtn.disabled = true;
-    if (copilotAuthorizeBtn) copilotAuthorizeBtn.disabled = true;
-
-    if (sendPortal) {
-      const portalResp = await fetch(`/flow-b/${patientId}/send-portal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visit_id: visitId }),
-      });
-      const portalData = await portalResp.json();
-      if (portalResp.ok && portalData.portal_url) {
-        const portalLinkDisplay = document.getElementById('portal-link-display');
-        if (portalLinkDisplay) {
-          portalLinkDisplay.textContent = portalData.portal_url;
-          portalLinkDisplay.href = portalData.portal_url;
-        }
-        showAlert(document.getElementById('flow-b-alerts'), 'success',
-          `Encounter authorized. ${data.task_count} care plan order(s) issued. Patient instructions dispatched.`);
-      } else {
-        showAlert(document.getElementById('flow-b-alerts'), 'success',
-          `Encounter saved. ${data.task_count} order(s) issued. Portal dispatch failed — retry from full EMR view.`);
-      }
-    } else {
-      showAlert(document.getElementById('flow-b-alerts'), 'success',
-        `Encounter saved. ${data.task_count} follow-up task(s) created. ${data.message}`);
-      document.getElementById('send-portal-section')?.classList.remove('hidden');
-    }
-  } catch (err) {
-    showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
-  } finally {
-    if (triggerBtn) setButtonLoading(triggerBtn, false);
-  }
-}
-
-if (confirmNoteBtn) {
-  confirmNoteBtn.addEventListener('click', () => confirmEncounter({ sendPortal: false, triggerBtn: confirmNoteBtn }));
-}
-
-if (copilotAuthorizeBtn) {
-  copilotAuthorizeBtn.addEventListener('click', () => {
-    confirmEncounter({
-      sendPortal: copilotSendPortalCheckbox?.checked ?? true,
-      triggerBtn: copilotAuthorizeBtn,
-    });
-  });
-}
-
-// -------------------------------------------------------------------------
-// Flow B — Send portal
-// -------------------------------------------------------------------------
-const sendPortalBtn = document.getElementById('btn-send-portal');
-const portalLinkDisplay = document.getElementById('portal-link-display');
-
-if (sendPortalBtn) {
-  sendPortalBtn.addEventListener('click', async () => {
     const patientId = document.body.dataset.patientId;
     const visitId = activeVisitId || document.getElementById('saved-visit-id')?.value
                     || document.getElementById('active-visit-id')?.value;
+    const tasks = collectApprovedTasks();
+    const rowCount = document.querySelectorAll('.task-row').length;
 
-    setButtonLoading(sendPortalBtn, true, 'Generating secure link…');
+    if (rowCount > 0 && tasks.length === 0) {
+      showAlert(document.getElementById('flow-b-alerts'), 'warning',
+        'No tasks approved. Check at least one task to send, or remove all tasks to send summary only.');
+      return;
+    }
+
+    setButtonLoading(sendPortalBtn, true, 'Updating patient portal…');
     try {
-      const resp = await fetch(`/flow-b/${patientId}/send-portal`, {
+      const resp = await fetch(`/flow-b/${patientId}/send-to-patient`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visit_id: visitId }),
+        body: JSON.stringify({
+          visit_id: visitId,
+          chart_entry: generatedOutput.chart_entry,
+          patient_summary: generatedOutput.patient_summary,
+          tasks,
+        }),
       });
       const data = await resp.json();
       if (!resp.ok || data.error) {
         showAlert(document.getElementById('flow-b-alerts'), 'danger', data.error);
         return;
       }
-      if (portalLinkDisplay) {
-        portalLinkDisplay.textContent = data.portal_url;
-        portalLinkDisplay.href = data.portal_url;
-        portalLinkDisplay.closest('.ocean-link-result')?.classList.remove('hidden');
-      }
-      document.getElementById('ocean-sent-status')?.classList.remove('hidden');
-      showAlert(document.getElementById('flow-b-alerts'), 'success',
-        'Secure link sent. Patient will receive their care summary via secure message.');
-      sendPortalBtn.disabled = true;
+
+      const savedVisitId = data.visit_id || visitId;
+      document.getElementById('saved-visit-id')?.setAttribute('value', savedVisitId);
+      if (typeof activeVisitId !== 'undefined') activeVisitId = savedVisitId;
+
+      showVisitLoggedState(data);
     } catch (err) {
       showAlert(document.getElementById('flow-b-alerts'), 'danger', `Error: ${err.message}`);
     } finally {

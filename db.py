@@ -15,6 +15,9 @@ from datetime import date, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "gp_copilot.db")
 
+DEMO_TOKEN = "demo"
+MARGARET_NAME = "Margaret Thompson"
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -52,7 +55,7 @@ def init_db():
                 patient_id     INTEGER NOT NULL REFERENCES patients(id),
                 visit_id       INTEGER NOT NULL REFERENCES visits(id),
                 description    TEXT NOT NULL,
-                type           TEXT NOT NULL CHECK(type IN ('confirmation','recurring_input')),
+                type           TEXT NOT NULL CHECK(type IN ('confirmation','recurring_input','upload')),
                 target_metric  TEXT,
                 status         TEXT NOT NULL DEFAULT 'pending'
                                    CHECK(status IN ('pending','done','overdue','no_data')),
@@ -92,6 +95,68 @@ def init_db():
                 value TEXT NOT NULL
             );
         """)
+    conn.close()
+    _migrate_upload_task_type()
+    _migrate_task_frequency()
+
+
+def _migrate_task_frequency():
+    """Add frequency column for daily/weekly recurring tasks."""
+    conn = get_conn()
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(followup_tasks)").fetchall()}
+    if "frequency" not in cols:
+        with conn:
+            conn.execute(
+                "ALTER TABLE followup_tasks ADD COLUMN frequency TEXT NOT NULL DEFAULT 'once'"
+            )
+            conn.execute(
+                "UPDATE followup_tasks SET frequency='daily' WHERE type='recurring_input'"
+            )
+            conn.execute(
+                """UPDATE followup_tasks SET frequency='daily'
+                   WHERE lower(description) LIKE '%daily%'
+                      OR lower(description) LIKE '%each morning%'
+                      OR lower(description) LIKE '%every day%'
+                      OR lower(description) LIKE '%each day%'"""
+            )
+            conn.execute(
+                """UPDATE followup_tasks SET frequency='weekly'
+                   WHERE lower(description) LIKE '%weekly%'
+                      OR lower(description) LIKE '%once a week%'
+                      OR lower(description) LIKE '%each week%'"""
+            )
+    conn.close()
+
+
+def _migrate_upload_task_type():
+    """Add ``upload`` to followup_tasks type constraint on existing databases."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='followup_tasks'"
+    ).fetchone()
+    if not row or "upload" in (row[0] or ""):
+        conn.close()
+        return
+    with conn:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.executescript("""
+            CREATE TABLE followup_tasks_new (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id     INTEGER NOT NULL REFERENCES patients(id),
+                visit_id       INTEGER NOT NULL REFERENCES visits(id),
+                description    TEXT NOT NULL,
+                type           TEXT NOT NULL CHECK(type IN ('confirmation','recurring_input','upload')),
+                target_metric  TEXT,
+                status         TEXT NOT NULL DEFAULT 'pending'
+                                   CHECK(status IN ('pending','done','overdue','no_data')),
+                due_date       TEXT NOT NULL,
+                created_at     TEXT NOT NULL
+            );
+            INSERT INTO followup_tasks_new SELECT * FROM followup_tasks;
+            DROP TABLE followup_tasks;
+            ALTER TABLE followup_tasks_new RENAME TO followup_tasks;
+        """)
+        conn.execute("PRAGMA foreign_keys=ON")
     conn.close()
 
 
@@ -263,7 +328,7 @@ def seed():
                 "physical_activity": "Light walking 20 min/day",
             },
             "medical_history": {
-                "conditions": ["Type 2 Diabetes (diagnosed 2015)", "Hypertension", "Asthma"],
+                "conditions": ["Type 2 Diabetes (diagnosed 2015)", "Hypertension"],
                 "past_surgeries": ["Appendectomy 2001"],
             },
             "medications": [
@@ -291,19 +356,7 @@ def seed():
             "UPDATE patients SET risk_flags_json=? WHERE id=?",
             (
                 json.dumps({
-                    "risk_flags": ["hypertension", "obesity", "asthma"],
-                    "ed_continuity": {
-                        "severity": "critical",
-                        "facility": "Ottawa Hospital ED",
-                        "discharge_date": "2026-06-12",
-                        "diagnosis": "Acute Shortness of Breath / Asthma Exacerbation",
-                        "message": (
-                            "Discharge Summary received from Ottawa Hospital ED (2026-06-12) "
-                            "for 'Acute Shortness of Breath / Asthma Exacerbation'. Patient was "
-                            "stabilized and discharged, but no post-hospitalization follow-up "
-                            "visit or asthma titration review has been booked."
-                        ),
-                    },
+                    "risk_flags": ["hypertension", "obesity"],
                     "pending_labs": [
                         {
                             "test": "HbA1c",
@@ -339,57 +392,237 @@ def seed():
     print("✓ DB seeded: Emma Chen (new patient) + Marcus Rivera (returning diabetic)")
 
 
-def patch_marcus_demo_data():
-    """Backfill ED continuity + asthma demo data for existing Marcus records."""
+def ensure_portal_demo():
+    """
+    Ensure Margaret Thompson exists with a portal-ready visit, tasks, and a
+    fixed ``demo`` secure token so /p/demo shares the same DB path as live links.
+    Safe to call on every app startup.
+    """
+    conn = get_conn()
+    with conn:
+        row = conn.execute(
+            "SELECT id FROM patients WHERE name=?", (MARGARET_NAME,)
+        ).fetchone()
+        if row:
+            margaret_id = row["id"]
+        else:
+            cur = conn.execute(
+                """INSERT INTO patients(name, dob, sex, condition, risk_flags_json)
+                   VALUES (?,?,?,?,?)""",
+                (
+                    MARGARET_NAME,
+                    "1958-04-12",
+                    "F",
+                    "hypertension",
+                    json.dumps(["hypertension"]),
+                ),
+            )
+            margaret_id = cur.lastrowid
+
+        visit_row = conn.execute(
+            """SELECT id FROM visits
+               WHERE patient_id=? AND visit_reason='Portal demo — hypertension follow-up'
+               ORDER BY id DESC LIMIT 1""",
+            (margaret_id,),
+        ).fetchone()
+
+        if not visit_row:
+            demo_today = get_demo_date()
+            last_visit = (demo_today - timedelta(days=28)).isoformat()
+            next_visit = (demo_today + timedelta(days=28)).isoformat()
+
+            conn.execute(
+                """INSERT INTO visits(patient_id, visit_date, visit_reason,
+                   chart_entry_text, patient_summary_text)
+                   VALUES (?,?,?,?,?)""",
+                (
+                    margaret_id,
+                    last_visit,
+                    "Portal demo — hypertension follow-up",
+                    (
+                        "Margaret Thompson presents for hypertension follow-up. "
+                        "BP 142/88 mmHg (elevated; target <130/80). "
+                        "Amlodipine increased from 5 mg to 10 mg once daily. "
+                        f"Plan: home BP monitoring, cardiology report review, next visit {next_visit}."
+                    ),
+                    (
+                        "Hi Margaret,\n\nHere's a summary from today's visit:\n\n"
+                        "✓ BP today was 142/88 — a little high; target below 130/80\n"
+                        "✓ Amlodipine increased from 5 mg → 10 mg once daily\n"
+                        "✓ Take every morning; don't stop without checking\n"
+                        "✓ Should notice it working in 1–2 weeks; next visit "
+                        + next_visit
+                        + "\n\n"
+                        "Your tasks before the next visit:\n"
+                        "[ ] Measure your blood pressure each morning\n"
+                        "[ ] Upload your cardiology report\n"
+                        "[ ] Add your blood pressure readings\n"
+                        "[ ] Notes from another doctor's visit\n\n"
+                        "Your care team will review this with you at your next visit."
+                    ),
+                ),
+            )
+            visit_id = conn.execute(
+                "SELECT id FROM visits WHERE patient_id=? ORDER BY id DESC LIMIT 1",
+                (margaret_id,),
+            ).fetchone()["id"]
+
+            due = next_visit
+            portal_tasks = [
+                (
+                    "Measure your blood pressure each morning",
+                    "confirmation",
+                    None,
+                    "daily",
+                ),
+                (
+                    "Upload your cardiology report",
+                    "upload",
+                    None,
+                    "once",
+                ),
+                (
+                    "Add your blood pressure readings",
+                    "recurring_input",
+                    "blood_pressure",
+                    "daily",
+                ),
+                (
+                    "Notes from another doctor's visit",
+                    "confirmation",
+                    None,
+                    "once",
+                ),
+            ]
+            for desc, task_type, metric, frequency in portal_tasks:
+                conn.execute(
+                    """INSERT INTO followup_tasks(patient_id, visit_id, description, type,
+                       target_metric, status, due_date, created_at, frequency)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (
+                        margaret_id,
+                        visit_id,
+                        desc,
+                        task_type,
+                        metric,
+                        "pending",
+                        due,
+                        last_visit,
+                        frequency,
+                    ),
+                )
+
+            snapshot = {
+                "medical_history": {
+                    "conditions": ["Hypertension (diagnosed 2018)"],
+                },
+                "medications": [
+                    {"name": "Amlodipine", "dose": "10mg", "frequency": "once daily"},
+                ],
+            }
+            conn.execute(
+                """INSERT INTO chart_snapshots(patient_id, visit_id, snapshot_json, created_at)
+                   VALUES (?,?,?,?)""",
+                (margaret_id, visit_id, json.dumps(snapshot), last_visit),
+            )
+        else:
+            visit_id = visit_row["id"]
+
+        token_row = conn.execute(
+            "SELECT id FROM secure_tokens WHERE token=?", (DEMO_TOKEN,)
+        ).fetchone()
+        today_iso = date.today().isoformat()
+        if token_row:
+            conn.execute(
+                """UPDATE secure_tokens SET patient_id=?, visit_id=?, used_at=NULL
+                   WHERE token=?""",
+                (margaret_id, visit_id, DEMO_TOKEN),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO secure_tokens(patient_id, visit_id, token, created_at)
+                   VALUES (?,?,?,?)""",
+                (margaret_id, visit_id, DEMO_TOKEN, today_iso),
+            )
+
+    conn.close()
+
+
+def get_demo_patient_id() -> int | None:
     conn = get_conn()
     row = conn.execute(
-        "SELECT id, risk_flags_json FROM patients WHERE name='Marcus Rivera'"
+        "SELECT id FROM patients WHERE name=?", (MARGARET_NAME,)
+    ).fetchone()
+    conn.close()
+    return row["id"] if row else None
+
+
+def get_token_for_visit(visit_id: int) -> str | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT token FROM secure_tokens WHERE visit_id=? ORDER BY id DESC LIMIT 1",
+        (visit_id,),
+    ).fetchone()
+    conn.close()
+    return row["token"] if row else None
+
+
+def get_portal_url(token: str, base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/p/{token}"
+
+
+def get_patient_portal_token(patient_id: int) -> str:
+    """Stable portal token per patient (Margaret uses ``demo``)."""
+    demo_id = get_demo_patient_id()
+    token = DEMO_TOKEN if patient_id == demo_id else f"pat_{patient_id}"
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id FROM secure_tokens WHERE token=?", (token,)
     ).fetchone()
     if not row:
-        conn.close()
-        return
-    try:
-        flags = json.loads(row["risk_flags_json"] or "{}")
-    except json.JSONDecodeError:
-        flags = {}
-    if flags.get("ed_continuity"):
-        conn.close()
-        return
-    flags["ed_continuity"] = {
-        "severity": "critical",
-        "facility": "Ottawa Hospital ED",
-        "discharge_date": "2026-06-12",
-        "diagnosis": "Acute Shortness of Breath / Asthma Exacerbation",
-        "message": (
-            "Discharge Summary received from Ottawa Hospital ED (2026-06-12) "
-            "for 'Acute Shortness of Breath / Asthma Exacerbation'. Patient was "
-            "stabilized and discharged, but no post-hospitalization follow-up "
-            "visit or asthma titration review has been booked."
-        ),
-    }
-    risk_list = flags.setdefault("risk_flags", ["hypertension", "obesity"])
-    if "asthma" not in risk_list:
-        risk_list.append("asthma")
+        with conn:
+            conn.execute(
+                """INSERT INTO secure_tokens(patient_id, visit_id, token, created_at)
+                   VALUES (?,?,?,?)""",
+                (patient_id, None, token, date.today().isoformat()),
+            )
+    conn.close()
+    return token
+
+
+def publish_visit_to_portal(patient_id: int, visit_id: int) -> str:
+    """Point the patient's stable portal token at this visit."""
+    token = get_patient_portal_token(patient_id)
+    conn = get_conn()
     with conn:
         conn.execute(
-            "UPDATE patients SET risk_flags_json=? WHERE id=?",
-            (json.dumps(flags), row["id"]),
+            """UPDATE secure_tokens SET patient_id=?, visit_id=?, used_at=NULL
+               WHERE token=?""",
+            (patient_id, visit_id, token),
         )
-        snap_row = conn.execute(
-            "SELECT id, snapshot_json FROM chart_snapshots WHERE patient_id=? ORDER BY id DESC LIMIT 1",
-            (row["id"],),
-        ).fetchone()
-        if snap_row:
-            snap = json.loads(snap_row["snapshot_json"])
-            conds = snap.get("medical_history", {}).get("conditions", [])
-            if not any("asthma" in c.lower() for c in conds):
-                conds.append("Asthma")
-                snap.setdefault("medical_history", {})["conditions"] = conds
-                conn.execute(
-                    "UPDATE chart_snapshots SET snapshot_json=? WHERE id=?",
-                    (json.dumps(snap), snap_row["id"]),
-                )
     conn.close()
+    return token
+
+
+def sync_followup_tasks(patient_id: int, visit_id: int, tasks: list[dict]) -> list[int]:
+    """
+    Replace unpublished tasks for a visit with the doctor-approved list.
+    Tasks the patient already completed (has responses) are kept.
+    """
+    conn = get_conn()
+    with conn:
+        stale = conn.execute(
+            """SELECT ft.id FROM followup_tasks ft
+               LEFT JOIN followup_responses fr ON fr.task_id = ft.id
+               WHERE ft.visit_id=? AND fr.id IS NULL""",
+            (visit_id,),
+        ).fetchall()
+        for row in stale:
+            conn.execute("DELETE FROM followup_tasks WHERE id=?", (row["id"],))
+    conn.close()
+    if not tasks:
+        return []
+    return create_followup_tasks(patient_id, visit_id, tasks)
 
 
 # ---------------------------------------------------------------------------
@@ -534,6 +767,30 @@ def update_visit_notes(visit_id: int, chart_entry: str, patient_summary: str):
     conn.close()
 
 
+def get_task(task_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM followup_tasks WHERE id=?", (task_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _infer_task_frequency(task: dict) -> str:
+    freq = (task.get("frequency") or "").lower()
+    if freq in ("daily", "weekly", "once"):
+        return freq
+    desc = (task.get("description") or "").lower()
+    if task.get("type") == "recurring_input":
+        return "daily"
+    if any(k in desc for k in ("weekly", "once a week", "each week")):
+        return "weekly"
+    if any(
+        k in desc
+        for k in ("daily", "each morning", "every day", "each day", "log each")
+    ):
+        return "daily"
+    return "once"
+
+
 def create_followup_tasks(patient_id: int, visit_id: int, tasks: list[dict]) -> list[int]:
     conn = get_conn()
     ids = []
@@ -541,8 +798,8 @@ def create_followup_tasks(patient_id: int, visit_id: int, tasks: list[dict]) -> 
         for t in tasks:
             cur = conn.execute(
                 """INSERT INTO followup_tasks(patient_id, visit_id, description, type,
-                   target_metric, status, due_date, created_at)
-                   VALUES (?,?,?,?,?,?,?,?)""",
+                   target_metric, status, due_date, created_at, frequency)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
                 (
                     patient_id,
                     visit_id,
@@ -552,6 +809,7 @@ def create_followup_tasks(patient_id: int, visit_id: int, tasks: list[dict]) -> 
                     "pending",
                     t["due_date"],
                     date.today().isoformat(),
+                    _infer_task_frequency(t),
                 ),
             )
             ids.append(cur.lastrowid)
@@ -594,6 +852,10 @@ def get_token_data(token: str) -> dict | None:
 
 def submit_followup_response(task_id: int, response_type: str, value: str, unit: str | None):
     from datetime import datetime
+
+    task = get_task(task_id)
+    frequency = (task or {}).get("frequency") or "once"
+
     conn = get_conn()
     with conn:
         conn.execute(
@@ -601,11 +863,16 @@ def submit_followup_response(task_id: int, response_type: str, value: str, unit:
                VALUES (?,?,?,?,?)""",
             (task_id, datetime.now().isoformat(), response_type, value, unit),
         )
-        # Update task status to done
-        conn.execute(
-            "UPDATE followup_tasks SET status='done' WHERE id=?",
-            (task_id,),
-        )
+        if frequency == "once":
+            conn.execute(
+                "UPDATE followup_tasks SET status='done' WHERE id=?",
+                (task_id,),
+            )
+        elif task and task.get("status") == "done":
+            conn.execute(
+                "UPDATE followup_tasks SET status='pending' WHERE id=?",
+                (task_id,),
+            )
     conn.close()
 
 

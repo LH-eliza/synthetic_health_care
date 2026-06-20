@@ -313,6 +313,13 @@ def _demo_dual_note(visit_notes_text: str, patient_context: dict) -> dict:
             "due_date": _default_due_date(60),
             "target_metric": None,
         })
+    if any(k in notes_lower for k in ("upload", "report", "cardiology", "document", "specialist letter")):
+        suggested_tasks.append({
+            "description": "Upload specialist or lab report to the patient portal",
+            "type": "upload",
+            "due_date": _default_due_date(30),
+            "target_metric": None,
+        })
     if not suggested_tasks:
         suggested_tasks.append({
             "description": f"Follow up on {condition} care plan discussed today",
@@ -445,8 +452,9 @@ Rules for patient_summary:
 Rules for suggested_tasks:
 - Derive 2–5 follow-up tasks directly from the visit plan in the notes.
 - These are AI suggestions only — the doctor will review, edit, approve, or reject each one.
-- type must be exactly "confirmation" (patient confirms done) or "recurring_input" (patient submits a reading).
+- type must be exactly "confirmation" (patient confirms done), "recurring_input" (patient submits a reading), or "upload" (patient uploads a document such as a lab report or referral letter).
 - Use recurring_input only for metrics the patient should log (e.g. fasting glucose, blood pressure).
+- Use upload when the patient must attach a file (e.g. external lab results, imaging report, specialist letter).
 - due_date must be ISO format YYYY-MM-DD, inferred from the notes or a sensible default (e.g. labs in 3 months).
 - target_metric: use "HbA1c", "fasting_glucose", or null as appropriate.
 - Do not duplicate tasks already clearly completed in the notes.
@@ -458,7 +466,8 @@ Example output structure:
   "suggested_tasks": [
     {"description": "Increase Metformin to 1000mg twice daily", "type": "confirmation", "due_date": "2026-04-01", "target_metric": null},
     {"description": "Repeat HbA1c and urine ACR bloodwork", "type": "confirmation", "due_date": "2026-06-01", "target_metric": "HbA1c"},
-    {"description": "Log daily fasting glucose via secure link", "type": "recurring_input", "due_date": "2026-04-01", "target_metric": "fasting_glucose"}
+    {"description": "Log daily fasting glucose via secure link", "type": "recurring_input", "due_date": "2026-04-01", "target_metric": "fasting_glucose"},
+    {"description": "Upload cardiology report from specialist visit", "type": "upload", "due_date": "2026-04-15", "target_metric": null}
   ]
 }"""
 
@@ -475,7 +484,7 @@ def _normalize_suggested_tasks(tasks: object) -> list[dict]:
         if not description:
             continue
         task_type = task.get("type", "confirmation")
-        if task_type not in ("confirmation", "recurring_input"):
+        if task_type not in ("confirmation", "recurring_input", "upload"):
             task_type = "confirmation"
         due_date = str(task.get("due_date", "")).strip()
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due_date):
