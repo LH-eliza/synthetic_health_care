@@ -1,0 +1,86 @@
+{
+  "patients": [
+    {
+      "id": "p001",
+      "name": "John Carter",
+      "age": 45,
+      "sex": "male",
+      "pre_existing_conditions": [
+        "seasonal allergies",
+        "mild hypertension"
+      ],
+      "allergies": [
+        "penicillin"
+      ],
+      "current_medications": [
+        "lisinopril 10mg daily"
+      ],
+      "visits": [
+        {
+          "visit_id": "v1",
+          "date": "2026-06-06",
+          "reason": "flu-like symptoms",
+          "vitals": {
+            "temp_c": 38.4,
+            "hr": 92,
+            "bp": "126/82"
+          },
+          "chart_entry": "Patient presented with fever, cough, myalgia x3 days, no shortness of breath. Lungs clear on auscultation. Dx: Influenza, likely viral. Advised rest, fluids, OTC antipyretics (acetaminophen). Return if symptoms worsen, persist beyond 7 days, or shortness of breath develops.",
+          "diagnosis": "Influenza",
+          "follow_up_tasks": [
+            {
+              "description": "Return/call if symptoms worsen or persist beyond 7 days",
+              "type": "confirmation",
+              "status": "overdue",
+              "due_date": "2026-06-13"
+            },
+            {
+              "description": "Self-monitor temperature daily, report if fever > 39C",
+              "type": "recurring_input",
+              "status": "done",
+              "due_date": "2026-06-13"
+            },
+            {
+              "description": "Rest and increase fluid intake",
+              "type": "confirmation",
+              "status": "no_data",
+              "due_date": "2026-06-20"
+            }
+          ]
+        },
+        {
+          "visit_id": "v2",
+          "date": "2026-06-20",
+          "reason": "follow-up \u2014 worsening symptoms",
+          "vitals": {},
+          "chart_entry": "Patient John Carter, a 45-year-old male with seasonal allergies and mild hypertension, presented today with worsening symptoms of influenza-like illness. Despite initial improvement with rest and fluids, he reports no resolution of fever or cough over the past week. Notably, his fever spiked to 39.2 degrees Celsius last night, and he now experiences shortness of breath on exertion and chest tightness. Physical examination revealed crackles in the right lower lobe. Given the lack of response to initial treatment and new onset of respiratory symptoms, I suspect progression to pneumonia, possibly with a bacterial superinfection post-viral.",
+          "diagnosis": "Pneumonia, possible bacterial superinfection",
+          "follow_up_tasks": [
+            {
+              "description": "Review patient's response to treatment and adjust as necessary",
+              "type": "recurring_input",
+              "status": "no_data",
+              "due_date": null
+            },
+            {
+              "description": "Consider ordering chest X-ray or CT scan to evaluate lung findings",
+              "type": "confirmation",
+              "status": "no_data",
+              "due_date": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p002",
+      "name": "Sarah Jenkins",
+      "age": 32,
+      "sex": "female",
+      "pre_existing_conditions": [],
+      "allergies": [],
+      "current_medications": [],
+      "visits": []
+    }
+  ]
+}
