@@ -1,18 +1,29 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isVercel = Boolean(process.env.VERCEL);
 
 export default defineConfig({
   plugins: [react()],
-  base: '/static/patient-portal/',
+  base: isVercel ? '/' : '/static/patient-portal/',
+  define: isVercel
+    ? { 'import.meta.env.VITE_DEMO_MODE': JSON.stringify('true') }
+    : {},
   build: {
-    outDir: path.resolve(__dirname, '../static/patient-portal'),
+    outDir: isVercel
+      ? path.resolve(__dirname, 'dist')
+      : path.resolve(__dirname, '../static/patient-portal'),
     emptyOutDir: true,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/index.js',
         chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name][extname]',
+        assetFileNames: isVercel
+          ? 'assets/[name]-[hash][extname]'
+          : 'assets/[name][extname]',
       },
     },
   },

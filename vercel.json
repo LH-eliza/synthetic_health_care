@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.com/vercel.json",
+  "buildCommand": "cd patient-portal && npm install && npm run vercel-build",
+  "outputDirectory": "patient-portal/dist",
+  "installCommand": "echo skip",
+  "framework": null,
+  "rewrites": [
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,352 @@
+{
+  "token": "demo",
+  "metadata": {
+    "patient": {
+      "id": "pat_9921",
+      "firstName": "Margaret",
+      "lastName": "Thompson"
+    },
+    "doctor": {
+      "name": "Dr. Sarah Chen, MD",
+      "specialty": "Family Medicine",
+      "clinicName": "North Maple Primary Care Clinic",
+      "city": "Toronto",
+      "initials": "SC",
+      "contact": {
+        "address": "123 North Maple St, Toronto, ON",
+        "phone": "(416) 555-0192",
+        "email": "drchen@northmaple.ca"
+      },
+      "note": "Great seeing you today, Margaret. Let's really focus on tracking that morning blood pressure before our next check-in."
+    },
+    "visit": {
+      "lastDate": "2025-06-16",
+      "nextDate": "2025-07-14",
+      "metrics": {
+        "currentBP": {
+          "systolic": 142,
+          "diastolic": 88
+        },
+        "targetBP": {
+          "systolic": 130,
+          "diastolic": 80
+        },
+        "status": "warning"
+      },
+      "summaryPlain": [
+        "BP today was 142/88 \u2014 a little high; target below 130/80",
+        "Amlodipine increased from 5 mg \u2192 10 mg once daily",
+        "Take every morning; don't stop without checking",
+        "Should notice it working in 1\u20132 weeks; next visit July 14"
+      ]
+    },
+    "afterVisitReport": {
+      "title": "After-Visit Report",
+      "visitReason": "Hypertension follow-up",
+      "keyFindings": [
+        "Blood pressure today was 142/88 mmHg \u2014 above target of 130/80",
+        "Home morning BP monitoring recommended before next check-in"
+      ],
+      "medicationChanges": [
+        "Amlodipine increased from 5 mg to 10 mg once daily",
+        "Take every morning with water; do not stop without calling the clinic",
+        "Full effect may take 1\u20132 weeks"
+      ],
+      "precautions": [
+        "Do not stop or skip your blood pressure medication without calling our office first.",
+        "Take your medication at the same time each morning, with water.",
+        "Stand up slowly \u2014 a higher dose can cause dizziness when you first start.",
+        "Call us if your blood pressure is above 180/120, or if you have chest pain, severe headache, or shortness of breath.",
+        "Limit salt and alcohol; both can raise blood pressure."
+      ],
+      "doctorRemarks": "Great seeing you today, Margaret. Let's really focus on tracking that morning blood pressure before our next check-in.",
+      "followUpTasks": [
+        "Measure your blood pressure each morning",
+        "Upload your cardiology report",
+        "Add your blood pressure readings",
+        "Notes from another doctor's visit"
+      ],
+      "lifestyleGuidance": [
+        {
+          "title": "Eat less salt",
+          "detail": "<1 tsp sodium/day; avoid packaged soups/processed meats"
+        },
+        {
+          "title": "Move for 30 minutes, most days",
+          "detail": "Brisk walk = medication-level effect"
+        },
+        {
+          "title": "Drink more water, less alcohol",
+          "detail": "\u22641 drink/day; hydration helps heart"
+        },
+        {
+          "title": "Eat more potassium-rich foods",
+          "detail": "Bananas, sweet potatoes, DASH diet"
+        }
+      ],
+      "emergencyNotice": "If you are experiencing a medical emergency, call 911 or go to the nearest emergency department."
+    }
+  },
+  "tasks": [
+    {
+      "id": "task_1",
+      "dbTaskId": null,
+      "type": "checkbox",
+      "title": "Measure your blood pressure each morning",
+      "frequency": "daily",
+      "isRecurring": true,
+      "loggedInPeriod": false,
+      "loggedDates": [],
+      "streak": 0,
+      "isCompleted": false
+    },
+    {
+      "id": "task_2",
+      "dbTaskId": null,
+      "type": "file_upload",
+      "title": "Upload your cardiology report",
+      "frequency": "once",
+      "isRecurring": false,
+      "loggedInPeriod": false,
+      "loggedDates": [],
+      "streak": 0,
+      "isCompleted": false,
+      "payload": null
+    },
+    {
+      "id": "task_3",
+      "dbTaskId": null,
+      "type": "bp_log",
+      "title": "Add your blood pressure readings",
+      "frequency": "daily",
+      "isRecurring": true,
+      "loggedInPeriod": false,
+      "loggedDates": [],
+      "streak": 0,
+      "isCompleted": false,
+      "payload": []
+    },
+    {
+      "id": "task_4",
+      "dbTaskId": null,
+      "type": "notes_textarea",
+      "title": "Notes from another doctor's visit",
+      "frequency": "once",
+      "isRecurring": false,
+      "loggedInPeriod": false,
+      "loggedDates": [],
+      "streak": 0,
+      "isCompleted": false,
+      "payload": {
+        "text": "",
+        "attachment": null
+      }
+    }
+  ],
+  "progressCalendar": {
+    "month": "2025-06",
+    "today": "2025-06-16",
+    "stats": {
+      "currentStreak": 0,
+      "thisWeekCount": 0,
+      "totalLogs": 0
+    },
+    "days": [
+      {
+        "date": "2025-06-01",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-02",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-03",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-04",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-05",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-06",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-07",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-08",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-09",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-10",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-11",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-12",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-13",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-14",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-15",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-16",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-17",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-18",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-19",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-20",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-21",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-22",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-23",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-24",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-25",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-26",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-27",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-28",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-29",
+        "count": 0,
+        "entries": []
+      },
+      {
+        "date": "2025-06-30",
+        "count": 0,
+        "entries": []
+      }
+    ],
+    "entriesByDate": {}
+  },
+  "tips": [
+    {
+      "id": "tip_1",
+      "category": "Diet",
+      "color": "green",
+      "title": "Eat less salt",
+      "detail": "<1 tsp sodium/day; avoid packaged soups/processed meats"
+    },
+    {
+      "id": "tip_2",
+      "category": "Exercise",
+      "color": "teal",
+      "title": "Move for 30 minutes, most days",
+      "detail": "Brisk walk = medication-level effect"
+    },
+    {
+      "id": "tip_3",
+      "category": "Hydration",
+      "color": "blue",
+      "title": "Drink more water, less alcohol",
+      "detail": "\u22641 drink/day; hydration helps heart"
+    },
+    {
+      "id": "tip_4",
+      "category": "Diet",
+      "color": "amber",
+      "title": "Eat more potassium-rich foods",
+      "detail": "Bananas, sweet potatoes, DASH diet"
+    },
+    {
+      "id": "tip_5",
+      "category": "Sleep",
+      "color": "purple",
+      "title": "Sleep 7\u20139 hours a night",
+      "detail": "Snoring/poor sleep raises BP"
+    },
+    {
+      "id": "tip_6",
+      "category": "Stress",
+      "color": "amber",
+      "title": "Find small ways to reduce stress",
+      "detail": "5 min slow breathing; Calm/Headspace"
+    }
+  ]
+}
