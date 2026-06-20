@@ -1,0 +1,39 @@
+{
+  "doctor": {
+    "name": "Dr. Sarah Chen, MD",
+    "specialty": "Family Medicine",
+    "clinicName": "North Maple Primary Care Clinic",
+    "city": "Toronto",
+    "initials": "SC",
+    "contact": {
+      "address": "123 North Maple St, Toronto, ON",
+      "phone": "(416) 555-0192",
+      "email": "drchen@northmaple.ca"
+    }
+  },
+  "bpTargets": {
+    "default": { "systolic": 130, "diastolic": 80 },
+    "hypertension": { "systolic": 130, "diastolic": 80 },
+    "diabetes": { "systolic": 130, "diastolic": 80 }
+  },
+  "nextVisitDaysDefault": 28,
+  "conditionPrecautions": {
+    "hypertension": [
+      "Do not stop or skip your blood pressure medication without calling our office first.",
+      "Take your medication at the same time each morning, with water.",
+      "Stand up slowly — a higher dose can cause dizziness when you first start.",
+      "Call us if your blood pressure is above 180/120, or if you have chest pain, severe headache, or shortness of breath.",
+      "Limit salt and alcohol; both can raise blood pressure."
+    ],
+    "diabetes": [
+      "Take medications exactly as prescribed — do not adjust doses on your own.",
+      "Call us if you have repeated low blood sugar episodes or feel unwell.",
+      "Keep your follow-up lab work appointments."
+    ],
+    "default": [
+      "Contact the clinic if your symptoms worsen or you have urgent concerns.",
+      "Follow the medication and lifestyle guidance discussed at your visit."
+    ]
+  },
+  "emergencyNotice": "If you are experiencing a medical emergency, call 911 or go to the nearest emergency department."
+}
