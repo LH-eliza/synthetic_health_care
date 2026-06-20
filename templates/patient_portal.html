@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Care Summary — GP Copilot</title>
+  <meta name="description" content="Secure care summary from your GP">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="portal">
+
+<div class="portal-shell">
+
+  <div class="portal-header">
+    <div class="portal-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/>
+      </svg>
+    </div>
+    <div>
+      <div class="portal-app-name">GP Copilot</div>
+      <div class="portal-subtitle">Care summary for {{ patient.name if patient else 'Patient' }}</div>
+    </div>
+  </div>
+
+  <div class="secure-badge">
+    <i data-lucide="lock"></i> Secure Message
+  </div>
+
+  <!-- Patient summary -->
+  {% if patient_summary %}
+  <div class="portal-card">
+    <div class="portal-card-title">
+      <i data-lucide="clipboard"></i> Your Visit Summary
+    </div>
+    <div class="portal-summary">{{ patient_summary }}</div>
+  </div>
+  {% endif %}
+
+  <!-- Tasks -->
+  {% if tasks %}
+  <div class="portal-card">
+    <div class="portal-card-title">
+      <i data-lucide="list-checks"></i> Your Tasks
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+      Please complete the tasks below and respond so your care team can review your progress at your next visit.
+    </p>
+
+    {% for task in tasks %}
+    <div class="portal-task-card">
+      <div class="portal-task-title">
+        {% if task.type == 'recurring_input' %}
+          <i data-lucide="bar-chart-2"></i>
+        {% else %}
+          <i data-lucide="check-square"></i>
+        {% endif %}
+        {{ task.description }}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+        Due: {{ task.due_date }}
+      </div>
+
+      {% if task.type == 'confirmation' %}
+      <form action="/p/{{ token }}/confirm" method="POST">
+        <input type="hidden" name="task_id" value="{{ task.id }}">
+        <div class="portal-form-group">
+          <label class="portal-label">Optional note</label>
+          <input type="text" class="portal-input" name="note" placeholder="e.g. Done on June 15 at LifeLabs">
+        </div>
+        <button type="submit" class="btn-portal-confirm">
+          <i data-lucide="check"></i> Mark as Done
+        </button>
+      </form>
+      {% else %}
+      <form action="/p/{{ token }}/submit" method="POST">
+        <input type="hidden" name="task_id" value="{{ task.id }}">
+        <div class="portal-form-group">
+          <label class="portal-label">Reading{% if task.target_metric %} — {{ task.target_metric }}{% endif %}</label>
+          <div style="display:flex;gap:8px">
+            <input type="number" class="portal-input" name="value"
+                   placeholder="e.g. 5.8" step="0.1" required style="flex:1">
+            <input type="text" class="portal-input" name="unit"
+                   placeholder="unit" style="width:80px"
+                   value="{% if task.target_metric == 'fasting_glucose' %}mmol/L{% elif task.target_metric == 'HbA1c' %}%{% endif %}">
+          </div>
+        </div>
+        <div class="portal-form-group">
+          <label class="portal-label">Optional note</label>
+          <input type="text" class="portal-input" name="note" placeholder="e.g. Fasted for 12 hours">
+        </div>
+        <button type="submit" class="btn-portal-submit">
+          <i data-lucide="send"></i> Submit Reading
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+  {% else %}
+  <div class="portal-card" style="text-align:center;padding:32px">
+    <div style="margin-bottom:12px">
+      <i data-lucide="check-circle" style="width:36px;height:36px;stroke:var(--status-done);stroke-width:1.5"></i>
+    </div>
+    <div style="font-family:var(--font-serif);font-size:17px;margin-bottom:6px">All tasks complete</div>
+    <div style="font-size:13px;color:var(--text-secondary)">
+      Your care team will see this at your next visit.
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="privacy-notice">
+    <i data-lucide="lock" style="width:12px;height:12px;stroke:currentColor;stroke-width:1.5;vertical-align:middle;margin-right:4px"></i>
+    Your care team will review this with you at your next visit.
+    This message was sent securely through GP Copilot.
+  </div>
+
+</div>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>

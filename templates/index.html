@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GP Copilot — Patients</title>
+  <meta name="description" content="GP Copilot — select a patient to begin their care session">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="homepage-shell">
+
+  <header class="homepage-topbar">
+    <a href="/" class="topbar-logo" style="text-decoration:none">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/>
+        </svg>
+      </div>
+      GP Copilot
+    </a>
+    <div class="d-flex align-center gap-8">
+      <a href="/settings/date" class="date-pill">
+        <i data-lucide="calendar"></i>
+        {{ today }}
+      </a>
+      <a href="/dashboard" class="btn btn-secondary btn-sm">
+        <i data-lucide="grid"></i> Overview
+      </a>
+    </div>
+  </header>
+
+  <div style="padding: 40px 32px 0">
+    <h1 style="font-family:var(--font-serif);font-size:26px;font-weight:500;margin-bottom:6px">Patients</h1>
+    <p class="text-secondary" style="font-size:13px;margin-bottom:32px">
+      Select a patient to open their care session.
+    </p>
+  </div>
+
+  <div class="patient-grid">
+    {% for p in patients %}
+    <a class="patient-card" href="/patient/{{ p.id }}" id="patient-card-{{ p.id }}">
+      <div class="d-flex align-center justify-between">
+        <div class="patient-card-name">{{ p.name }}</div>
+        {% if p.flow == 'A' %}
+          <span class="badge badge-flow-a">
+            <i data-lucide="user-plus" style="width:10px;height:10px;stroke:currentColor;stroke-width:2"></i>
+            First Visit
+          </span>
+        {% else %}
+          <span class="badge badge-flow-b">
+            <i data-lucide="refresh-cw" style="width:10px;height:10px;stroke:currentColor;stroke-width:2"></i>
+            Returning
+          </span>
+        {% endif %}
+      </div>
+
+      <div class="patient-card-meta">
+        <span>{{ p.age }}y</span>
+        <span>{{ p.sex }}</span>
+        <span>{{ p.dob }}</span>
+        {% if p.condition %}
+          <span class="badge badge-condition">{{ p.condition|title }}</span>
+        {% endif %}
+      </div>
+
+      <div class="patient-card-footer">
+        {% if p.flow == 'A' %}
+          <span class="flow-indicator">
+            <i data-lucide="clipboard"></i>
+            No chart history — in-visit intake
+          </span>
+        {% else %}
+          <span class="flow-indicator">
+            <i data-lucide="activity"></i>
+            {{ p.visit_count }} prior visit{{ 's' if p.visit_count != 1 }} — pre-visit briefing ready
+          </span>
+        {% endif %}
+        <span class="btn btn-secondary btn-sm">Open</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+</div>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>

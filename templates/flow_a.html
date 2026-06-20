@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}{{ patient.name }} — First Visit — GP Copilot{% endblock %}
+
+{% block sidebar_reminders %}
+<div class="sidebar-panel">
+  <div class="sidebar-panel-header">
+    Reminders <span class="sidebar-panel-chevron">›</span>
+  </div>
+  <div class="sidebar-panel-body">
+    <span class="text-muted" style="font-style:italic;font-size:11px">
+      Populated after baseline is confirmed.
+    </span>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="flow-a-alerts"></div>
+
+<!-- Header -->
+<div class="section-header">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span class="badge badge-flow-a">
+        <i data-lucide="user-plus" style="width:10px;height:10px;stroke:currentColor;stroke-width:2"></i>
+        First Visit
+      </span>
+      <span class="text-muted" style="font-size:11px">In-Visit Intake</span>
+    </div>
+    <h2>{{ patient.name }}</h2>
+  </div>
+</div>
+
+{% if not has_history and not snapshot %}
+<div class="alert alert-warning">
+  <i data-lucide="info"></i>
+  <div>
+    <strong>No chart history</strong> — this is {{ patient.name }}'s first visit.
+    Capture social and medical history live during this encounter.
+    The AI structures the conversation; the doctor confirms each bin before anything is saved.
+  </div>
+</div>
+{% endif %}
+
+{% if snapshot %}
+<div class="alert alert-success" id="baseline-established-banner">
+  <i data-lucide="check-circle"></i>
+  <div>
+    <strong>Baseline record established.</strong>
+    This snapshot is stored and becomes the prior-visit data for {{ patient.name }}'s next visit.
+  </div>
+</div>
+{% else %}
+<div class="hidden alert alert-success" id="baseline-established-banner">
+  <i data-lucide="check-circle"></i>
+  <div>
+    <strong>Baseline record established.</strong>
+    This snapshot is stored and becomes the prior-visit data for {{ patient.name }}'s next visit.
+    The chronic care loop has begun.
+  </div>
+</div>
+{% endif %}
+
+<!-- Two-pane intake layout -->
+{% if not snapshot %}
+<div class="intake-layout mt-16">
+
+  <!-- LEFT PANE: Conversation transcript -->
+  <div class="scribe-pane">
+    <div class="section-label">Live Conversation Transcript</div>
+    <textarea
+      id="scribe-conversation"
+      class="scribe-textarea"
+      placeholder="Paste or type the doctor-patient conversation here…
+
+Example:
+Doctor: Do you have any children?
+Patient: Yes, two kids, ages 8 and 12.
+Doctor: Do you drink alcohol?
+Patient: A beer or two on weekends.
+Doctor: Any medications?
+Patient: Just lisinopril 10mg once a day.
+Doctor: Any allergies?
+Patient: Penicillin gives me hives.
+Doctor: Past surgeries?
+Patient: Gallbladder removed in 2019."
+    ></textarea>
+
+    <div class="alert alert-info" style="font-size:12px">
+      <i data-lucide="info"></i>
+      <div>The AI structures the conversation into four EMR bins.
+      <strong>Nothing saves until you explicitly confirm each section.</strong></div>
+    </div>
+
+    <button id="btn-transcribe" class="btn btn-primary btn-lg w-full">
+      <i data-lucide="zap"></i> Structure Conversation
+    </button>
+  </div>
+
+  <!-- RIGHT PANE: Structured bins -->
+  <div class="bins-pane">
+    <div class="section-label">Structured EMR Bins</div>
+
+    <div class="bin-card" id="bin-card-social_history">
+      <div class="bin-header">
+        <div class="bin-header-left">
+          <i data-lucide="users"></i>
+          Social History
+        </div>
+        <span id="bin-status-social_history">Awaiting input</span>
+      </div>
+      <div class="bin-content" id="bin-content-social_history">
+        <span class="text-muted">Will populate after structuring…</span>
+      </div>
+      <div class="bin-footer">
+        <button id="btn-confirm-social_history" class="btn btn-sm btn-secondary" disabled>Confirm</button>
+      </div>
+    </div>
+
+    <div class="bin-card" id="bin-card-medical_history">
+      <div class="bin-header">
+        <div class="bin-header-left">
+          <i data-lucide="file-text"></i>
+          Medical History
+        </div>
+        <span id="bin-status-medical_history">Awaiting input</span>
+      </div>
+      <div class="bin-content" id="bin-content-medical_history">
+        <span class="text-muted">Will populate after structuring…</span>
+      </div>
+      <div class="bin-footer">
+        <button id="btn-confirm-medical_history" class="btn btn-sm btn-secondary" disabled>Confirm</button>
+      </div>
+    </div>
+
+    <div class="bin-card" id="bin-card-medications">
+      <div class="bin-header">
+        <div class="bin-header-left">
+          <i data-lucide="pill"></i>
+          Medications
+        </div>
+        <span id="bin-status-medications">Awaiting input</span>
+      </div>
+      <div class="bin-content" id="bin-content-medications">
+        <span class="text-muted">Will populate after structuring…</span>
+      </div>
+      <div class="bin-footer">
+        <button id="btn-confirm-medications" class="btn btn-sm btn-secondary" disabled>Confirm</button>
+      </div>
+    </div>
+
+    <div class="bin-card" id="bin-card-vaccines">
+      <div class="bin-header">
+        <div class="bin-header-left">
+          <i data-lucide="shield"></i>
+          Vaccines
+        </div>
+        <span id="bin-status-vaccines">Awaiting input</span>
+      </div>
+      <div class="bin-content" id="bin-content-vaccines">
+        <span class="text-muted">Will populate after structuring…</span>
+      </div>
+      <div class="bin-footer">
+        <button id="btn-confirm-vaccines" class="btn btn-sm btn-secondary" disabled>Confirm</button>
+      </div>
+    </div>
+
+    <button id="btn-confirm-all" class="btn btn-primary btn-lg w-full mt-8" disabled>
+      <i data-lucide="check"></i> Establish Baseline Record
+    </button>
+    <p class="text-muted" style="font-size:11px;text-align:center;margin-top:6px">
+      Confirm all sections above before saving. Nothing saves silently.
+    </p>
+  </div>
+
+</div>
+
+{% else %}
+<!-- Saved snapshot view -->
+<div class="encounter-card mt-16">
+  <div class="encounter-card-header">
+    <div class="encounter-card-title">
+      <i data-lucide="clipboard"></i>
+      Baseline Snapshot
+    </div>
+    <span class="text-muted" style="font-size:11px">{{ snapshot.created_at }}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;font-size:13px">
+    {% set data = snapshot.data %}
+    {% if data.social_history %}
+    <div>
+      <div class="section-label">Social History</div>
+      {% for k, v in data.social_history.items() %}
+        {% if v and v != 'null' %}
+        <div class="sidebar-item"><strong>{{ k|replace('_',' ')|title }}:</strong> {{ v }}</div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if data.medical_history %}
+    <div>
+      <div class="section-label">Medical History</div>
+      {% for cond in data.medical_history.get('conditions', []) %}
+        <div class="sidebar-item">{{ cond }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if data.medications %}
+    <div>
+      <div class="section-label">Medications</div>
+      {% for med in data.medications %}
+        <div class="sidebar-med">
+          <span class="sidebar-med-name">{{ med.name }}</span>
+          <span class="sidebar-med-detail">{{ med.dose }} · {{ med.frequency }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if data.vaccines %}
+    <div>
+      <div class="section-label">Vaccines</div>
+      {% for v in data.vaccines %}
+        <div class="sidebar-item">{{ v.name }} <span class="text-muted">({{ v.date }})</span></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>lucide.createIcons();</script>
+{% endblock %}

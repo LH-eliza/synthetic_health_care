@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Link Error — GP Copilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:wght@500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="portal">
+<div class="portal-shell" style="text-align:center;padding-top:80px">
+  <div style="display:flex;justify-content:center;margin-bottom:16px">
+    <i data-lucide="link-2-off" style="width:40px;height:40px;stroke:var(--text-muted);stroke-width:1.2"></i>
+  </div>
+  <h1 style="font-family:var(--font-serif);font-size:22px;margin-bottom:8px">Link Invalid or Expired</h1>
+  <p style="color:var(--text-secondary);font-size:14px;max-width:320px;margin-inline:auto;line-height:1.7">
+    {{ message }}
+  </p>
+  <p style="color:var(--text-muted);font-size:12px;margin-top:20px">
+    Please contact your care team for a new link.
+  </p>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>

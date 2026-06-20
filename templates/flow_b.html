@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}{{ patient.name }} — GP Copilot{% endblock %}
+
+{% block sidebar_reminders %}
+{% if prior_tasks %}
+<div class="sidebar-panel open">
+  <div class="sidebar-panel-header active">
+    Prior Tasks <span class="sidebar-panel-chevron">›</span>
+  </div>
+  <div class="sidebar-panel-body">
+    {% for task in prior_tasks %}
+    <div class="sidebar-task">
+      <div class="task-dot {{ task.status }}"></div>
+      <div>
+        <div style="color:var(--text-primary);font-size:11px;line-height:1.5">{{ task.description }}</div>
+        <div class="text-muted" style="font-size:10px">{{ task.due_date }} · {{ task.status }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block sidebar_right_extra %}
+<div class="sidebar-panel">
+  <div class="sidebar-panel-header">
+    Secure Link <span class="sidebar-panel-chevron">›</span>
+  </div>
+  <div class="sidebar-panel-body">
+    {% if latest_visit and latest_visit.patient_summary_text %}
+      <div class="ocean-status-indicator" style="margin-bottom:4px">
+        <div class="ocean-dot"></div>
+        <span style="font-size:11px">Summary sent to patient</span>
+      </div>
+    {% else %}
+      <span class="text-muted" style="font-style:italic;font-size:11px">
+        Available after visit is confirmed.
+      </span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="flow-b-alerts"></div>
+<input type="hidden" id="active-visit-id" value="{{ active_visit.id if active_visit else '' }}">
+<input type="hidden" id="saved-visit-id" value="">
+
+<!-- Header -->
+<div class="section-header">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span class="badge badge-flow-b">
+        <i data-lucide="refresh-cw" style="width:10px;height:10px;stroke:currentColor;stroke-width:2"></i>
+        Returning Patient
+      </span>
+    </div>
+    <h2>{{ patient.name }}</h2>
+  </div>
+</div>
+
+<!-- ================================================================
+     PRE-VISIT BRIEFING — three chips, fires every visit
+     ================================================================ -->
+{% if chips %}
+<div class="section-label">Pre-Visit Briefing</div>
+<div class="chips-container">
+
+  <!-- Chip 1: Condition monitoring (gold) -->
+  <div class="previsit-chip chip-condition">
+    <div class="chip-icon">
+      <i data-lucide="activity"></i>
+    </div>
+    <div class="chip-label">Condition Alert</div>
+    {% if chips.condition_alert %}
+      <div class="chip-value">{{ chips.condition_alert.description }}</div>
+      <div class="chip-reasoning">{{ chips.condition_alert.reasoning }}</div>
+    {% elif chips.screenings %}
+      {% set s = chips.screenings[0] %}
+      <div class="chip-value">{{ s.name }}</div>
+      <div class="chip-reasoning">{{ s.reasoning }}</div>
+    {% else %}
+      <div class="chip-value chip-null">No active alerts</div>
+      <div class="chip-reasoning">Monitoring up to date</div>
+    {% endif %}
+  </div>
+
+  <!-- Chip 2: Task diff from prior visit (blue-grey) -->
+  <div class="previsit-chip chip-followup">
+    <div class="chip-icon">
+      <i data-lucide="check-square"></i>
+    </div>
+    <div class="chip-label">Follow-up Status</div>
+    {% if chips.task_diffs %}
+      <div class="chip-task-list">
+        {% for diff in chips.task_diffs %}
+        <div class="chip-task-item">
+          <span class="chip-status-pill status-{{ diff.status }}">{{ diff.status.replace('_',' ') }}</span>
+          <span style="font-size:11px;color:var(--text-secondary);line-height:1.4">
+            {{ diff.task_description[:58] }}{% if diff.task_description|length > 58 %}…{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:8px;font-size:10px;color:var(--text-muted)">Computed from prior visit · deterministic</div>
+    {% else %}
+      <div class="chip-value chip-null">No prior tasks</div>
+    {% endif %}
+  </div>
+
+  <!-- Chip 3: Lab alerts filtered to condition (red) -->
+  <div class="previsit-chip chip-lab">
+    <div class="chip-icon">
+      <i data-lucide="flask-conical"></i>
+    </div>
+    <div class="chip-label">Lab Results{% if patient.condition %} — {{ patient.condition|title }}{% endif %}</div>
+    {% if chips.lab_alerts %}
+      {% for lab in chips.lab_alerts %}
+      <div style="margin-bottom:8px">
+        <div class="chip-value" style="font-size:13px">
+          {{ lab.test }}
+          {% if lab.value %}
+            <span class="chip-status-pill status-overdue" style="font-size:9px;margin-left:4px">
+              {{ lab.value }}{% if lab.unit %} {{ lab.unit }}{% endif %}
+            </span>
+          {% endif %}
+        </div>
+        <div class="chip-reasoning">{{ lab.reasoning }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="chip-value chip-null">No flagged results</div>
+      <div class="chip-reasoning">
+        Filtered to {{ patient.condition }}-relevant tests
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endif %}
+
+{% if latest_visit %}
+<div class="alert alert-info" style="font-size:12px;margin-bottom:24px">
+  <i data-lucide="calendar"></i>
+  <div>
+    <strong>Prior visit:</strong> {{ latest_visit.visit_date }} — {{ latest_visit.visit_reason or 'No reason recorded' }}.
+    The pre-visit briefing above fires for every visit regardless of today's visit reason.
+  </div>
+</div>
+{% endif %}
+
+<!-- ================================================================
+     VISIT CAPTURE
+     ================================================================ -->
+
+<!-- Step 1: Start visit -->
+<div id="start-visit-section" {% if active_visit %}class="hidden"{% endif %}>
+  <div class="encounter-card">
+    <div class="encounter-card-header">
+      <div class="encounter-card-title">
+        <i data-lucide="edit-3"></i>
+        Start Today's Visit
+      </div>
+    </div>
+    <p class="text-secondary" style="font-size:12px;margin-bottom:14px">
+      Enter the visit reason. The pre-visit briefing above fires regardless.
+    </p>
+    <div class="d-flex gap-8">
+      <input
+        id="visit-reason-input"
+        class="visit-reason-input"
+        type="text"
+        placeholder="Visit reason — e.g. mental health follow-up, medication review, fatigue…"
+      >
+      <button id="btn-start-visit" class="btn btn-primary" style="white-space:nowrap">
+        <i data-lucide="arrow-right"></i> Start Visit
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Notes + generate (visible once visit is started) -->
+<div id="visit-started-section" {% if not active_visit %}class="hidden"{% endif %}>
+  <div class="encounter-card">
+    <div class="encounter-card-header">
+      <div class="encounter-card-title">
+        <i data-lucide="file-edit"></i>
+        Visit Notes
+      </div>
+      <span class="badge badge-condition">Visit active</span>
+    </div>
+    <p class="text-secondary" style="font-size:12px;margin-bottom:14px">
+      Enter notes in your own words. One AI call generates both the chart entry and the patient-facing summary.
+    </p>
+    <textarea
+      id="visit-notes-textarea"
+      class="scribe-textarea"
+      style="min-height:160px"
+      placeholder="Visit notes…
+
+Example: Patient presents for mental health follow-up — low mood, poor sleep. Discussed T2DM management. HbA1c 7.8%, improved from 8.2% — good trend. Metformin increase not completed (GI side effects). Plan: switch to extended-release Metformin 500mg ER, titrate. Refer to diabetes educator. Repeat HbA1c in 3 months. Patient to log daily fasting glucose and submit via secure link."
+    ></textarea>
+
+    <div class="d-flex gap-8 mt-12">
+      <button id="btn-generate-note" class="btn btn-primary">
+        <i data-lucide="zap"></i> Generate Chart &amp; Patient Summary
+      </button>
+      <span class="text-muted" style="font-size:11px;align-self:center">
+        One call · two outputs · no drift
+      </span>
+    </div>
+  </div>
+
+  <!-- Dual output -->
+  <div id="dual-output-section" class="hidden mt-16">
+    <div class="section-label">Generated Outputs — Review Before Confirming</div>
+    <div class="dual-output-grid">
+      <div class="output-pane output-pane-chart">
+        <div class="output-pane-header">
+          <i data-lucide="file-text"></i> Chart Entry — Clinical Language
+        </div>
+        <div class="output-pane-body" id="chart-entry-output"></div>
+      </div>
+      <div class="output-pane output-pane-patient">
+        <div class="output-pane-header">
+          <i data-lucide="message-square"></i> Patient Summary — Plain Language
+        </div>
+        <div class="output-pane-body" id="patient-summary-output"></div>
+      </div>
+    </div>
+
+    <!-- Follow-up task builder -->
+    <div class="encounter-card mt-16" id="confirm-note-section">
+      <div class="encounter-card-header">
+        <div class="encounter-card-title">
+          <i data-lucide="list-checks"></i>
+          Follow-up Tasks
+        </div>
+        <button id="btn-add-task" class="btn btn-secondary btn-sm">
+          <i data-lucide="plus"></i> Add Task
+        </button>
+      </div>
+      <p class="text-secondary" style="font-size:12px;margin-bottom:12px">
+        These become the prior-visit data for this patient's next visit.
+      </p>
+      <div id="task-list" class="task-builder"></div>
+
+      <div class="d-flex gap-8 mt-16" style="justify-content:flex-end">
+        <button id="btn-confirm-note" class="btn btn-primary btn-lg">
+          <i data-lucide="check"></i> Confirm Visit &amp; Create Tasks
+        </button>
+      </div>
+      <p class="text-muted" style="font-size:11px;text-align:right;margin-top:6px">
+        Nothing saves until confirmed.
+      </p>
+    </div>
+  </div>
+
+  <!-- Secure link -->
+  <div id="send-portal-section" class="hidden">
+    <div class="ocean-panel mt-16">
+      <div class="ocean-panel-header">
+        <i data-lucide="send"></i>
+        Send Patient Summary
+      </div>
+      <div class="ocean-option">
+        <input type="checkbox" class="ocean-checkbox" checked disabled> Secure message
+      </div>
+      <div class="ocean-option">
+        <input type="checkbox" class="ocean-checkbox" checked disabled> Allow patient to reply
+      </div>
+      <div class="ocean-option">
+        <input type="checkbox" class="ocean-checkbox" checked disabled> Notify me when viewed
+      </div>
+
+      <div class="d-flex gap-8 mt-12">
+        <button id="btn-send-portal" class="btn btn-ocean btn-lg" style="flex:1">
+          <i data-lucide="lock"></i> Send via Secure Link
+        </button>
+      </div>
+
+      <div class="ocean-link-result hidden">
+        <i data-lucide="link" style="width:12px;height:12px;stroke:currentColor;stroke-width:1.5;flex-shrink:0"></i>
+        <a id="portal-link-display" href="#" target="_blank"></a>
+      </div>
+
+      <div id="ocean-sent-status" class="ocean-status-indicator hidden">
+        <div class="ocean-dot"></div>
+        <span>Secure message sent — patient will receive their summary</span>
+      </div>
+    </div>
+
+    <div class="alert alert-success mt-16">
+      <i data-lucide="refresh-cw"></i>
+      <div>
+        <strong>Care loop closed.</strong> This visit's notes and follow-up tasks are stored as prior-visit data.
+        When {{ patient.name }} returns, the pre-visit briefing will reflect the status of these tasks.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>lucide.createIcons();</script>
+{% endblock %}
