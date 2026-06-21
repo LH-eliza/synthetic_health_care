@@ -1,4 +1,4 @@
-##GP Copilot 
+## GP Copilot 
 
 AI in Healthcare Hackathon — GP Copilot consolidates overdue test results, screening reminders, medication titration checks, and auto-extracted follow-up tasks into one per-patient view for GPs, with a correlated patient pre-visit portal.
 
